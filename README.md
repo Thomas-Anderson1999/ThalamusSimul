@@ -13,25 +13,21 @@
 ## PyQT5 Example
  - pip install -r requirementsUI.txt
 
-# Excute on Linux
+# NEED upgrade MCLib
+ - git pull
+
+# Excute on Linux 
  - python3 -m venv venv 
  - source venv/bin/activate
- - python3 main.py
+ - python3 qtRoverSimul.py #Rover Simul
 
-# Excute on Window
- - virtualenv venv 
- - venv/script/activate.bat
- - python3 main.py
+
 
 # UI Example, You can test every fucntion on Python
-![Script.txt](Readme_data/UI.png)
- - Engine Start with proper a model script
- - Global Coordination Test : changing point ove view
- - Object Control : change the attributes of the specific object. 
- - Modleling Control : change the attributes of the script file.
- - Scene Generation : depth map, edge, segmentation map, bounding box
- - Mesh Up, Texture Overlay: State Engine with ScriptFreeModel.txt, you can generate the scene of another angle
- - Mesh Up, Texture Overlay: State Engine with Dataset03/Script03.txt, you can manipulate the scene of deleting an object.
-![Script.txt](Readme_data/BirdView.png)
+![RoverScript.txt](Readme_data/UI.png)
+ - Click Engine Start
+ - Change View, Section 1,2,3 and Rover view
+ - Rotate, go Strait, cam Tilt
+![Script.txt](Readme_data/Rover.png)
 
 
