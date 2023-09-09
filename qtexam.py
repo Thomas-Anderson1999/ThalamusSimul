@@ -25,7 +25,7 @@ class Window(QWidget):
         mainGrid = QGridLayout()
 
         label = [["ScriptFile:", "EngineName:"]]
-        editDefault = [["Script.txt", "Thalamus QT Example"]]
+        editDefault = [["ScriptFreeModel.txt", "Thalamus QT Example"]]
         buttonText = ["Engine Start"]
         buttonFunc = [self.InitEngine]
         subgrid, self.startEdit = self.createGroupBox("Global Coord Test", label, editDefault, buttonText, buttonFunc)
@@ -60,7 +60,7 @@ class Window(QWidget):
         mainGrid.addWidget(subgrid, 4, 0)
 
         label = [["DepthMap:", "Width", "Height", "MeshUp Inv", "FreeModelNum", "Thread"],["ColorImg:"]]
-        editDefault = [["Dataset03/DepthBin03.txt","300", "300", "9", "4", "12"],["Dataset03/Color03.png"]]
+        editDefault = [["depthmap.txt","300", "300", "9", "5", "12"],["Shade_Img.png"]]
         buttonText = ["MeshUp", "Texture Overay", "Texure Int", "TextureView"]
         buttonFunc = [self.func2MeshUp, self.func2TexOveray, self.func2TexInt, self.func2TexView]
         subgrid, self.func2Edit = self.createGroupBox("Mesh up, Texture Overay", label, editDefault, buttonText, buttonFunc)
@@ -330,7 +330,7 @@ class Window(QWidget):
         Depth_Map = np.zeros((depHeight, depWidth), np.float32)
         Depth_Mask = np.zeros((depHeight, depWidth, 3), np.uint8)
 
-        if 0 != LoadBinDepthMapPnt(self.func2Edit[0].text(), depWidth, depHeight, 600, 6000, Depth_Map.ctypes, Depth_Mask.ctypes):
+        if 0 != LoadBinDepthMapPnt(self.func2Edit[0].text(), depWidth, depHeight, 0, 6000, Depth_Map.ctypes, Depth_Mask.ctypes):
             Depth_Map = cv2.normalize(Depth_Map, None, alpha=0, beta=1.0, norm_type=cv2.NORM_MINMAX)
             cv2.imshow("Depth Map", Depth_Map)
             ret = ObjMeshUp(depWidth, depHeight, MeshUpType, depInv)
