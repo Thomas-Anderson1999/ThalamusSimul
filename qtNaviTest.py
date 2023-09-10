@@ -66,8 +66,15 @@ class Window(QWidget):
         subgrid, self.func2Edit = self.createGroupBox("Mesh up, Texture Overay", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 5, 0)
 
+        label = [["posX", "posY", ]]
+        editDefault = [["29", "31",]]
+        buttonText = ["Seperation Floor"]
+        buttonFunc = [self.naviSerperationBGD,]
+        subgrid, self.func3Edit = self.createGroupBox("Navigation", label, editDefault, buttonText, buttonFunc)
+        mainGrid.addWidget(subgrid, 6, 0)
+
         self.setLayout(mainGrid)
-        self.setWindowTitle("Thalamus Engine UI")
+        self.setWindowTitle("Thalamus Engine / Feature Navigation UI")
 
         self.resize(600, -1)
 
@@ -360,6 +367,10 @@ class Window(QWidget):
 
         getTextureImg(TheadNum, TextuedView.ctypes, SrcPosX, SrcPosY, SrcWidth, SrcHeight, DestWidth, DestHeight, ObjID)
         cv2.imshow("Texture View", TextuedView)
+
+    def naviSerperationBGD(self):
+        print("sss")
+
     #-Function 2
 if __name__ == '__main__':
     print(cv2.__version__)
