@@ -509,8 +509,8 @@ class Window(QWidget):
 
         setModelPosRot(0, 0,0,0, Pitch, 0, 0)
         setModelPosRot(1, -(mdlFrame[3][0] + camOffsetX), -mdlFrame[3][1], -(mdlFrame[3][2] + camOffsetZ), 0, -Yaw, 0)
-        self.lastPitch = Pitch
-        self.lastYaw = Yaw
+        self.lastPitch = Pitch #for locomotion Timer's Initial Value
+        self.lastYaw = Yaw #for locomotion Timer's Initial Value
     def simulLocoTimer_slot(self):
         #Initialize Movement
         if self.simulCnt == 0:
@@ -604,11 +604,15 @@ class Window(QWidget):
         modelLen, modelList = getModelList(1024)
         for mdlIdx, modelName in enumerate(modelList):
             if "Rover1_CAMERA" == modelName:
+
+                setModelPosRot(0, 0, 0, 0, 0, 0, 0)
+                setModelPosRot(1, 0, 0, 0, 0, 0, 0)
+
                 self.camMdlIdx = mdlIdx
                 mdlFrame = getLocalFrame(mdlIdx)
                 print(mdlFrame)
-                tempYaw = math.atan2(mdlFrame[0][1], mdlFrame[0][0]) * 180. / math.pi + 180
-                tempPitch = -math.asin(mdlFrame[2][2]) * 180. / math.pi
+                tempYaw = -math.atan2(mdlFrame[0][2], mdlFrame[0][0]) * 180. / math.pi + 180
+                tempPitch = -math.asin(mdlFrame[2][1]) * 180. / math.pi
                 print(tempYaw, tempPitch)
                 self.setCamView(tempYaw, tempPitch)
                 InitializeRenderFacet(-1, -1)
@@ -627,4 +631,5 @@ if __name__ == '__main__':
     clock = Window()
     clock.show()
     sys.exit(app.exec_())
+
 
