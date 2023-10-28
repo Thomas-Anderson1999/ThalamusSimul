@@ -56,8 +56,8 @@ class Window(QWidget):
 
         label = [["SrcPosX", "SrcPosY", "SrcWidth", "SrcHeight", "DestWidth", "DestHeight"], ["ObjID", "CPU Core"]]
         editDefault = [["0", "0", "1280", "720", "300", "300"], ["-1", "12"]]
-        buttonText = ["DepthMap", "ColorMap", "NoShade", "LightEff", "Bounding Box"]
-        buttonFunc = [self.funcDepthMap, self.funcColorMap, self.funcNoShade, self.funcLightEffect, self.funcBBox]
+        buttonText = ["DepthMap", "ColorMap", "NoShade", "LightEff", "Bounding Box", "ext EngColor"]
+        buttonFunc = [self.funcDepthMap, self.funcColorMap, self.funcNoShade, self.funcLightEffect, self.funcBBox, self.funcExtEngineViewMap]
         subgrid, self.func1Edit = self.createGroupBox("Scene Generation", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 4, 0)
 
@@ -315,6 +315,16 @@ class Window(QWidget):
 
         GetShadeImage(Shade_Img.ctypes, Shade_Mask.ctypes, DestWidth, DestHeight, CPUCore, SrcPosX, SrcPosY, SrcWidth, SrcHeight, ObjID)
         cv2.imshow("Shade_Img", Shade_Img)
+
+    def funcExtEngineViewMap(self):
+        Color_width = 1280
+        Color_Height = 720
+        Color_image = np.zeros((Color_Height, Color_width, 3), np.uint8)
+        InitializeRenderFacet(-1, -1)  # refresh
+        GetColorImage(Color_image.ctypes, Color_width, Color_Height)
+        Color_image = cv2.resize(Color_image, (300, 300), cv2.INTER_LANCZOS4)
+        cv2.imshow("External Engine Color Image", Color_image)
+        cv2.imwrite("extColor.png", Color_image)
 
     def funcNoShade(self):
         SrcPosX, SrcPosY, SrcWidth, SrcHeight, DestWidth, DestHeight, ObjID, CPUCore = self.getFunc1Param()
