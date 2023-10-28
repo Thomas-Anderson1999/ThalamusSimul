@@ -71,9 +71,9 @@ class Window(QWidget):
 
         label = [["axis", "acc", "cruiseSpd", "dcc", "distance", "Simul Len"], ["Straight", "Rotate", "Cam Tilt"]]
         editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0"]]
-        buttonText = ["getProfile", "go Straigt", "Rotate", "cam Tilt", "View Sec1", "View Sec2", "View Sec3", "View Cam"]
+        buttonText = ["getProfile", "go Straigt", "Rotate", "cam Tilt", "View Sec1", "View Sec2", "View Sec3", "View Cam", "Clicked WayPnt"]
         buttonFunc = [self.motion_getProfile, self.motion_goFoward, self.motion_Rotate, self.motion_CamTilt,
-                      self.view_sec1, self.view_sec2, self.view_sec3, self.view_onCam]
+                      self.view_sec1, self.view_sec2, self.view_sec3, self.view_onCam, self.clickedWayPnt]
         subgrid, self.func3Edit = self.createGroupBox("Motion Control", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 6, 0)
 
@@ -620,6 +620,14 @@ class Window(QWidget):
                 break
         #self.globalPosAttSet()
 
+    def clickedWayPnt(self):
+        clkX, clkY = GetLastClickPos()
+        if clkX != -1 and clkY != -1:
+            dist, _, _, _ ,_ , _ = ReturnDistance(clkX, clkY, True)
+            px, py, pz = Pixelto3D(clkX, clkY, dist)
+            print(clkX,clkY, Pixelto3D(clkX, clkY, dist))
+            self.func3Edit[6].setText(str(pz/ 1000))
+            self.func3Edit[7].setText("{:.2f}".format(math.atan2(px, pz) / math.pi * 180.).format())
     #-Function Motion Control
 
 
