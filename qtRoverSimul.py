@@ -54,10 +54,11 @@ class Window(QWidget):
         subgrid, self.mdlControlEdit = self.createGroupBox("Modeiling Control", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 3, 0)
 
-        label = [["SrcPosX", "SrcPosY", "SrcWidth", "SrcHeight", "DestWidth", "DestHeight"], ["ObjID", "CPU Core"]]
-        editDefault = [["0", "0", "1280", "720", "300", "300"], ["-1", "12"]]
-        buttonText = ["DepthMap", "ColorMap", "NoShade", "LightEff", "Bounding Box", "ext EngColor"]
-        buttonFunc = [self.funcDepthMap, self.funcColorMap, self.funcNoShade, self.funcLightEffect, self.funcBBox, self.funcExtEngineViewMap]
+        label = [["SrcPosX", "SrcPosY", "SrcWidth", "SrcHeight", "DestWidth", "DestHeight"], ["ObjID", "CPU Core", "Dataset"]]
+        editDefault = [["0", "0", "1280", "720", "300", "300"], ["-1", "12", "01"]]
+        buttonText = ["DepthMap", "ColorMap", "NoShade", "LightEff", "Bounding Box", "ext EngColor", "DataSet Adding"]
+        buttonFunc = [self.funcDepthMap, self.funcColorMap, self.funcNoShade, self.funcLightEffect, self.funcBBox,
+                      self.funcExtEngineViewMap, self.funcDatasetAdding]
         subgrid, self.func1Edit = self.createGroupBox("Scene Generation", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 4, 0)
 
@@ -93,8 +94,11 @@ class Window(QWidget):
 
         #+Flag For Application
         self.vehicleCamMode = False
+        #-Flag For Application
 
-
+        #+Dataset setup
+        self.datasetIndex = None
+        #-Dataset setup
 
     def createGroupBox(self, gbxName, labeltext, editDefault, buttonText, buttonFunc):
         groupBox = QGroupBox(gbxName)
@@ -325,6 +329,72 @@ class Window(QWidget):
         Color_image = cv2.resize(Color_image, (300, 300), cv2.INTER_LANCZOS4)
         cv2.imshow("External Engine Color Image", Color_image)
         cv2.imwrite("extColor.png", Color_image)
+
+    def funcDatasetAdding(self):
+        roverBaseID = 1
+        datasetPath = "dataset"
+        datasetWH = 300
+
+        #+Initialize Dataset
+        if self.datasetIndex is None:
+            self.datasetIndex = 0
+            try:
+                if not os.path.exists(datasetPath):
+                    os.makedirs(datasetPath)
+            except OSError:
+                print("Error: Failed to create the dataset directory. " + datasetPath)
+
+            datasetName = self.func1Edit[8].text()
+            datasetPath = datasetPath + "/" + datasetName
+            try:
+                if not os.path.exists(datasetPath):
+                    os.makedirs(datasetPath)
+            except OSError:
+                print("Error: Failed to create the dataset directory. " + datasetPath)
+
+            with open(datasetPath + "/dsLog.txt", "w") as f:
+                pass
+
+            _, _, self.offsetDSPosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+        else:
+            datasetName = self.func1Edit[8].text()
+            datasetPath = datasetPath + "/" + datasetName
+        # -Initialize Dataset
+
+
+        with open(datasetPath + "/dsLog.txt", "a+") as f:
+            posModelIO, rotModelIO, basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+            datasetAdd = np.array(basePosAtt) - np.array(self.offsetDSPosAtt)
+            print(datasetAdd)
+            f.write(str(self.datasetIndex) + " " + str(datasetAdd[0]) + " " + str(datasetAdd[1]) + " " + str(datasetAdd[2])
+                    + " " + str(datasetAdd[3]) + " " + str(datasetAdd[4]) + " " + str(datasetAdd[5])+"\n")
+
+        #+Color Img
+        Color_width = 1280
+        Color_Height = 720
+        Color_image = np.zeros((Color_Height, Color_width, 3), np.uint8)
+        InitializeRenderFacet(-1, -1)  # refresh
+        GetColorImage(Color_image.ctypes, Color_width, Color_Height)
+        Color_image = cv2.resize(Color_image, (datasetWH, datasetWH), cv2.INTER_LANCZOS4)
+        #cv2.imshow("External Engine Color Image", Color_image)
+        fname = datasetPath + "/colpr" + str("%03d" % self.datasetIndex)+".png"
+        cv2.imwrite(fname, Color_image)
+        #-Color Img
+
+
+        #+depth map
+        SrcPosX, SrcPosY, SrcWidth, SrcHeight, DestWidth, DestHeight, ObjID, CPUCore = self.getFunc1Param()
+        Depth_Map = np.zeros((DestHeight, DestWidth), np.float32)
+        Depth_Mask = np.zeros((DestHeight, DestWidth, 3), np.uint8)
+        t0 = time.monotonic()
+        GetDepthMap(Depth_Map.ctypes, Depth_Mask.ctypes, DestWidth, DestHeight, CPUCore, SrcPosX, SrcPosY, SrcWidth, SrcHeight, ObjID)
+        t1 = time.monotonic() - t0
+        print("Time elapsed: ", t1)
+        fname = datasetPath + "/depth" + str("%03d" % self.datasetIndex) + ".txt"
+        SaveRawDepthFile(fname, Depth_Map)
+        #-depth map
+
+        self.datasetIndex += 1
 
     def funcNoShade(self):
         SrcPosX, SrcPosY, SrcWidth, SrcHeight, DestWidth, DestHeight, ObjID, CPUCore = self.getFunc1Param()
