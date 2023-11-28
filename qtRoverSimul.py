@@ -20,6 +20,18 @@ import sys
 from PyQt5.QtWidgets import QApplication, QWidget
 
 
+#+Thalamus Navigation Logic
+import os, sys
+tmp = os.path.dirname(os.path.abspath(__file__))
+tmp += "/ThalamusNavigation"
+sys.path.append(tmp)
+try:
+    from ThalamusNavigation.NavInterface import *
+except:
+    print("You need ThalamusNavigation submodule")
+#-Thalamus Navigation Logic
+
+
 class Window(QWidget):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
@@ -47,8 +59,8 @@ class Window(QWidget):
         subgrid, self.objControlEdit = self.createGroupBox("Object Control", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 2, 0)
 
-        label = [["ObjID", "ModelID", "Offset"], ["PosX", "PosY", "PosZ", "AttX", "AttY", "AttZ"]]
-        editDefault = [["-1", "0", "-1"], ["0", "0", "0", "0", "0", "0"]]
+        label = [["ObjID", "ModelID", "Offset", "PosX", "PosY", "PosZ", "AttX", "AttY", "AttZ"]]
+        editDefault = [["-1", "0", "-1", "0", "0", "0", "0", "0", "0"]]
         buttonText = ["MoelGetParam", "Param Set"]
         buttonFunc = [self.mdlGetParam, self.mdlSetParam]
         subgrid, self.mdlControlEdit = self.createGroupBox("Modeiling Control", label, editDefault, buttonText, buttonFunc)
@@ -78,6 +90,13 @@ class Window(QWidget):
         subgrid, self.func3Edit = self.createGroupBox("Motion Control", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 6, 0)
 
+        label = [["1meter/pix", "moveable area", "GndPosX", "GndPosY"]]
+        editDefault = [["50"," 25", "29", "31"]]
+        buttonText = ["greedy Nav", "Navi Action", "Nav Clear", "MergeMap"]
+        buttonFunc = [self.greedyNav, self.naviAction, self.navClear, self.mergeMap ]
+        subgrid, self.func4Edit = self.createGroupBox("Thalamus Navigation Test", label, editDefault, buttonText, buttonFunc)
+        mainGrid.addWidget(subgrid, 7, 0)
+
         self.setLayout(mainGrid)
         self.setWindowTitle("Thalamus Engine UI")
 
@@ -99,6 +118,13 @@ class Window(QWidget):
         #+Dataset setup
         self.datasetIndex = None
         #-Dataset setup
+
+        #+Navagation value
+        self.greedNavRes = None
+        self.floorImgList = []
+        self.floorCtrList = []
+        self.rotposList = []
+        #-Navagation value
 
     def createGroupBox(self, gbxName, labeltext, editDefault, buttonText, buttonFunc):
         groupBox = QGroupBox(gbxName)
@@ -708,8 +734,61 @@ class Window(QWidget):
             print(clkX,clkY, Pixelto3D(clkX, clkY, dist))
             self.func3Edit[6].setText(str(pz/ 1000))
             self.func3Edit[7].setText("{:.2f}".format(math.atan2(px, pz) / math.pi * 180.).format())
+
+    def greedyNav(self):
+        curDir = os.getcwd()
+        os.chdir(curDir + "/ThalamusNavigation")
+
+        meterPerPixel = int(self.func4Edit[0].text())
+        erodcnt = int(self.func4Edit[1].text())
+        gndX = int(self.func4Edit[2].text())
+        gndY = int(self.func4Edit[3].text())
+
+        self.greedNavRes, floorMask, ctrPos = getGreedyNav(meterPerPixel, GndPosX=gndX, GndPosY=gndY, dFilename=None, EngNum=1, erodeCnt=erodcnt)
+        if self.greedNavRes is not None:
+
+            #
+            self.floorImgList.append(floorMask)
+            self.floorCtrList.append(ctrPos)
+
+            roverBaseID = 1
+            if self.datasetIndex is None:
+                self.datasetIndex = 0
+                _, _, self.offsetDSPosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+
+            posModelIO, rotModelIO, basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+            datasetAdd = np.array(basePosAtt) - np.array(self.offsetDSPosAtt)
+            self.rotposList.append([self.datasetIndex, datasetAdd[0] / 1000, datasetAdd[1] / 1000, datasetAdd[2] / 1000, datasetAdd[3], datasetAdd[4], datasetAdd[5]])
+            self.datasetIndex += 1
+            #
+
+            for navRes in self.greedNavRes:
+                print("Nav res : ", navRes.action, navRes.value)
+
+        os.chdir(curDir)
     #-Function Motion Control
 
+    def naviAction(self):
+        if self.greedNavRes is not None:
+            if len(self.greedNavRes) == 0:
+                print("Complete Local Navigation\n")
+            else:
+                nav = self.greedNavRes.pop(0)
+                print("Nav res : ", nav.action, nav.value)
+
+                if nav.action == navAction.goStraight:
+                    self.func3Edit[6].setText(str(nav.value))
+                elif nav.action == navAction.rotate:
+                    self.func3Edit[7].setText(str(nav.value))
+
+    def navClear(self):
+        self.greedNavRes = []
+
+    def mergeMap(self):
+
+        mergeMap = mergeFloor(self.floorImgList, self.floorCtrList, self.rotposList)
+        cv2.imshow("mergeMap", mergeMap)
+        pass
 
 if __name__ == '__main__':
     print(cv2.__version__)
