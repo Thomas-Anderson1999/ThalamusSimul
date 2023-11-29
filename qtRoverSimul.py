@@ -609,7 +609,7 @@ class Window(QWidget):
         # -Initiaizize Pos/Att
 
         mdlFrame = getLocalFrame(self.camMdlIdx)
-        CamSz = 20 # Cam depth(size Z) is 30, somwhat margin 15->20 casue of pitch movement
+        CamSz = 30 # Cam depth(size Z) is 30, somwhat margin 15->20 casue of pitch movement
         camOffsetX = CamSz * math.sin(Yaw * math.pi / 180.)
         camOffsetZ = CamSz * math.cos(Yaw * math.pi / 180.)
 
@@ -744,10 +744,9 @@ class Window(QWidget):
         gndX = int(self.func4Edit[2].text())
         gndY = int(self.func4Edit[3].text())
 
-        self.greedNavRes, floorMask, ctrPos = getGreedyNav(meterPerPixel, GndPosX=gndX, GndPosY=gndY, dFilename=None, EngNum=1, erodeCnt=erodcnt)
-        if self.greedNavRes is not None:
 
-            #
+        self.greedNavRes, floorMask, ctrPos = getGreedyNav(meterPerPixel, GndPosX=gndX, GndPosY=gndY, dFilename=None, EngNum=1, erodeCnt=erodcnt, compAtt=(-self.lastPitch,0,0))
+        if self.greedNavRes is not None:
             self.floorImgList.append(floorMask)
             self.floorCtrList.append(ctrPos)
 
