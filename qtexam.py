@@ -101,8 +101,20 @@ class Window(QWidget):
     def InitEngine(self):
         AsmFileName = self.startEdit[0].text().encode('UTF-8')
         SimWindowText = self.startEdit[1].text().encode('UTF-8')
-        InitSimulation(AsmFileName, SimWindowText)
-        pass
+        if True == LoadThalamusInterface():
+
+            errCode = InitEngine(AsmFileName)
+            if errCode != 0:
+                errMsg = ""
+                if errCode & 1 != 0:
+                    errMsg += "env.txt "
+                if errCode & 2 != 0:
+                    errMsg += "script"
+                QMessageBox.about(self, "Initialize Error:" + str(errCode), "Error On " + errMsg)
+
+            StartExt3DEngine(AsmFileName, SimWindowText)
+        else:
+            OnMsgText("Error on Loading Library")
 
     #+Global Coord Button Func
     def getGlobal(self):
