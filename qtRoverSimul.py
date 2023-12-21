@@ -82,8 +82,8 @@ class Window(QWidget):
         mainGrid.addWidget(subgrid, 5, 0)
 
 
-        label = [["axis", "acc", "cruiseSpd", "dcc", "distance", "Simul Len"], ["Straight", "Rotate", "Cam Tilt"]]
-        editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0"]]
+        label = [["axis", "acc", "cruiseSpd", "dcc", "distance", "Simul Len"], ["Straight", "Rotate", "Cam Tilt", "File Save"]]
+        editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0", "None"]]
         buttonText = ["getProfile", "go Straigt", "Rotate", "cam Tilt", "View Sec1", "View Sec2", "View Sec3", "View Cam", "Clicked WayPnt"]
         buttonFunc = [self.motion_getProfile, self.motion_goFoward, self.motion_Rotate, self.motion_CamTilt,
                       self.view_sec1, self.view_sec2, self.view_sec3, self.view_onCam, self.clickedWayPnt]
@@ -358,13 +358,13 @@ class Window(QWidget):
         GetShadeImage(Shade_Img.ctypes, Shade_Mask.ctypes, DestWidth, DestHeight, CPUCore, SrcPosX, SrcPosY, SrcWidth, SrcHeight, ObjID)
         cv2.imshow("Shade_Img", Shade_Img)
 
-    def funcExtEngineViewMap(self):
-        Color_width = 1280
-        Color_Height = 720
+    def getExtEngineImage(self, Color_width=1280, Color_Height=720):
         Color_image = np.zeros((Color_Height, Color_width, 3), np.uint8)
         InitializeRenderFacet(-1, -1)  # refresh
         GetColorImage(Color_image.ctypes, Color_width, Color_Height)
-        Color_image = cv2.resize(Color_image, (300, 300), cv2.INTER_LANCZOS4)
+        return Color_image
+    def funcExtEngineViewMap(self):
+        Color_image = self.getExtEngineImage()
         cv2.imshow("External Engine Color Image", Color_image)
         cv2.imwrite("extColor.png", Color_image)
 
@@ -636,6 +636,13 @@ class Window(QWidget):
             self.posModelIO, self.rotModelIO, self.basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3) #get Src Position / Rotation
             self.zDiff = 0
             self.xDiff = 0
+
+            #+video
+            self.vidOut = None
+            if self.func3Edit[9].text() != "None":
+                fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
+                self.vidOut = cv2.VideoWriter(self.func3Edit[9].text()+'.avi', fourcc, 30, (1280, 720))
+            #-video
         #+locomotion Modeling
 
         #+Calculation Yaw
@@ -666,17 +673,39 @@ class Window(QWidget):
                 self.setCamView(Yaw, self.lastPitch)
 
             InitializeRenderFacet(-1, -1)
+
+            # +video
+            if self.vidOut is not None:
+                Color_image = self.getExtEngineImage()
+                cv2.imshow("Color_image", Color_image)
+                self.vidOut.write(Color_image)
+            # -video
         # -Refresh
+
 
         self.simulCnt += 1
         if self.simulCnt == len(self.motionState) or self.motionState[self.simulCnt] == 3: #state_standby
             self.Simultimer.stop()
+
+            #+video
+            if self.vidOut is not None:
+                self.vidOut.release()
+                self.vidOut = None
+            #-video
 
     def simulCamTiltTimer_slot(self):
         #+locomotion Modeling
         tmpPosDiff = self.leftPos[self.simulCnt] / 1000 + self.basePosAtt[3]
         print(tmpPosDiff)
         #-locomotion Modeling
+
+        if self.simulCnt == 0:
+            # +video
+            self.vidOut = None
+            if self.func3Edit[9].text() != "None":
+                fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
+                self.vidOut = cv2.VideoWriter(self.func3Edit[9].text() + '.avi', fourcc, 30, (1280, 720))
+            # -video
 
         # +Refresh
         if self.simulCnt % self.refreshRate == 0:
@@ -688,11 +717,25 @@ class Window(QWidget):
                 self.setCamView(self.lastYaw, tmpPosDiff)
 
             InitializeRenderFacet(-1, -1)
+
+            # +video
+            if self.vidOut is not None:
+                Color_image = self.getExtEngineImage()
+                cv2.imshow("Color_image", Color_image)
+                self.vidOut.write(Color_image)
+            # -video
         # -Refresh
 
         self.simulCnt += 1
         if self.simulCnt == len(self.motionState) or self.motionState[self.simulCnt] == 3: #state_standby
             self.Simultimer.stop()
+
+            #+video
+            if self.vidOut is not None:
+                self.vidOut.release()
+                self.vidOut = None
+            #-video
+
 
     def view_sec1(self):
         self.globalCoordEdit[0].setText("4000")
