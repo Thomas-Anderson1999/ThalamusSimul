@@ -83,7 +83,7 @@ class Window(QWidget):
 
 
         label = [["axis", "acc", "cruiseSpd", "dcc", "distance", "Simul Len"], ["Straight", "Rotate", "Cam Tilt", "File Save"]]
-        editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0", "1000"]] #"None"
+        editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0", "None"]]
         buttonText = ["getProfile", "go Straigt", "Rotate", "cam Tilt", "View Sec1", "View Sec2", "View Sec3", "View Cam", "Clicked WayPnt"]
         buttonFunc = [self.motion_getProfile, self.motion_goFoward, self.motion_Rotate, self.motion_CamTilt,
                       self.view_sec1, self.view_sec2, self.view_sec3, self.view_onCam, self.clickedWayPnt]
@@ -92,8 +92,8 @@ class Window(QWidget):
 
         label = [["1meter/pix", "moveable area", "GndPosX", "GndPosY"]]
         editDefault = [["50"," 25", "29", "31"]]
-        buttonText = ["greedy Nav", "Navi Action", "Nav Clear", "MergeMap"]
-        buttonFunc = [self.greedyNav, self.naviAction, self.navClear, self.mergeMap ]
+        buttonText = ["greedy Nav", "Navi Action", "Nav Clear", "MergeMap", "Test moving Obs"]
+        buttonFunc = [self.greedyNav, self.naviAction, self.navClear, self.mergeMap, self.testMvObs]
         subgrid, self.func4Edit = self.createGroupBox("Thalamus Navigation Test", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 7, 0)
 
@@ -125,6 +125,10 @@ class Window(QWidget):
         self.floorCtrList = []
         self.rotposList = []
         #-Navagation value
+
+        #+moving obstacle
+        self.movingObsParam = None
+        #-moving obstacle
 
     def createGroupBox(self, gbxName, labeltext, editDefault, buttonText, buttonFunc):
         groupBox = QGroupBox(gbxName)
@@ -664,6 +668,18 @@ class Window(QWidget):
         print(Yaw, tmpPosDiff)
         #-locomotion Modeling
 
+        #+moving obstacle
+        if self.movingObsParam is not None:
+            objID = 7
+            obspos = list(GetObjPos(objID))
+            if obspos[2] < self.movingObsParam[0]:
+                obspos[2] += self.movingObsParam[1]
+                SetObjPos(objID, obspos[0], obspos[1], obspos[2])
+                InitializeRenderFacet(-1, -1)
+            else:
+                self.movingObsParam = None
+        #-moving obstacle
+
         # +Refresh
         if self.simulCnt % self.refreshRate == 0:
             setModelPosRot(self.posModelIO,
@@ -685,7 +701,6 @@ class Window(QWidget):
                 self.vidOut.write(Color_image)
             # -video
         # -Refresh
-
 
         self.simulCnt += 1
         if self.simulCnt == len(self.motionState) or self.motionState[self.simulCnt] == 3: #state_standby
@@ -843,10 +858,15 @@ class Window(QWidget):
         self.greedNavRes = []
 
     def mergeMap(self):
-
         mergeMap = mergeFloor(self.floorImgList, self.floorCtrList, self.rotposList)
         cv2.imshow("mergeMap", mergeMap)
-        pass
+
+    def testMvObs(self):
+        objID = 7
+        obspos = GetObjPos(objID)
+        SetObjPos(objID, obspos[0], obspos[1], 600)
+        self.movingObsParam = [1600, 50]
+
 
 if __name__ == '__main__':
     print(cv2.__version__)
