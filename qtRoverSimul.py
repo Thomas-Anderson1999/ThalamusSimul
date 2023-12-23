@@ -83,7 +83,7 @@ class Window(QWidget):
 
 
         label = [["axis", "acc", "cruiseSpd", "dcc", "distance", "Simul Len"], ["Straight", "Rotate", "Cam Tilt", "File Save"]]
-        editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0", "None"]]
+        editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0", "1000"]] #"None"
         buttonText = ["getProfile", "go Straigt", "Rotate", "cam Tilt", "View Sec1", "View Sec2", "View Sec3", "View Cam", "Clicked WayPnt"]
         buttonFunc = [self.motion_getProfile, self.motion_goFoward, self.motion_Rotate, self.motion_CamTilt,
                       self.view_sec1, self.view_sec2, self.view_sec3, self.view_onCam, self.clickedWayPnt]
@@ -621,12 +621,16 @@ class Window(QWidget):
         # -Initiaizize Pos/Att
 
         mdlFrame = getLocalFrame(self.camMdlIdx)
-        CamSz = 30 # Cam depth(size Z) is 30, somwhat margin 15->20 casue of pitch movement
-        camOffsetX = CamSz * math.sin(Yaw * math.pi / 180.)
-        camOffsetZ = CamSz * math.cos(Yaw * math.pi / 180.)
+        CamSz = 30 # Cam depth(size Z) is 30, somwhat margin 15->30 casue of pitch movement
+        CamOffsetY = 30 # camera position for offset
 
-        setModelPosRot(0, 0,0,0, Pitch, 0, 0)
-        setModelPosRot(1, -(mdlFrame[3][0] + camOffsetX), -mdlFrame[3][1], -(mdlFrame[3][2] + camOffsetZ), 0, -Yaw, 0)
+        camOffsetX = CamSz * math.sin(Yaw * math.pi / 180.)
+        camOffsetZ = CamSz * math.cos(Yaw * math.pi / 180.) + CamOffsetY * math.sin(Pitch * math.pi / 180.)
+        camOffsetY = CamOffsetY * math.cos(Pitch * math.pi / 180.)
+
+        setModelPosRot(0, 0,0, 0, Pitch, 0, 0)
+        setModelPosRot(1, -(mdlFrame[3][0] + camOffsetX), -mdlFrame[3][1]+camOffsetY, -(mdlFrame[3][2] + camOffsetZ), 0, -Yaw, 0)
+
         self.lastPitch = Pitch #for locomotion Timer's Initial Value
         self.lastYaw = Yaw #for locomotion Timer's Initial Value
     def simulLocoTimer_slot(self):
