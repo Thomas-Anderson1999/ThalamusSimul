@@ -108,6 +108,7 @@ class Window(QWidget):
         #-Init Motion Controller
 
         # +Motion Constant
+        self.timeSlice = 1
         self.wheelCircum = math.pi * (0.22 + 0.03)
         # -Motion Constant
 
@@ -527,9 +528,8 @@ class Window(QWidget):
         # - Profile Parameter
 
         print("axisIdx:", axisIdx)
-        timeSlice = 10
         print(MoveDS(axisIdx, acc, cruiseSpd, dcc, distance))  # acc, cruise_spd, dcc, distance
-        ret, Time, Spd, Pos, State = getProfile(axisIdx, simulTime, timeSlice)
+        ret, Time, Spd, Pos, State = getProfile(axisIdx, simulTime)
 
 
         plt.plot(Time, Spd, label="spd")
@@ -556,8 +556,7 @@ class Window(QWidget):
 
         # +get profile
         print(MoveDS(axisIdx, acc, cruiseSpd, dcc, distance))  # acc, cruise_spd, dcc, distance
-        self.timeSlice = 10
-        ret, Time, Spd, Pos, State = getProfile(axisIdx, simulTime, self.timeSlice)
+        ret, Time, Spd, Pos, State = getProfile(axisIdx, simulTime)
         self.leftPos = leftSign * Pos.copy()
         self.rightPos = rightSign * Pos.copy()
         self.leftSpd = leftSign * Spd.copy()
@@ -675,7 +674,7 @@ class Window(QWidget):
             if obspos[2] < self.movingObsParam[0]:
                 obspos[2] += self.movingObsParam[1]
                 SetObjPos(objID, obspos[0], obspos[1], obspos[2])
-                InitializeRenderFacet(-1, -1)
+                #InitializeRenderFacet(-1, -1)
             else:
                 self.movingObsParam = None
         #-moving obstacle
@@ -692,14 +691,14 @@ class Window(QWidget):
             if self.vehicleCamMode:
                 self.setCamView(Yaw, self.lastPitch)
 
-            InitializeRenderFacet(-1, -1)
-
             # +video
             if self.vidOut is not None:
                 Color_image = self.getExtEngineImage()
                 cv2.imshow("Color_image", Color_image)
                 self.vidOut.write(Color_image)
             # -video
+            else:
+                InitializeRenderFacet(-1, -1)
         # -Refresh
 
         self.simulCnt += 1
@@ -865,7 +864,7 @@ class Window(QWidget):
         objID = 7
         obspos = GetObjPos(objID)
         SetObjPos(objID, obspos[0], obspos[1], 600)
-        self.movingObsParam = [1600, 50]
+        self.movingObsParam = [1600, 2]
 
 
 if __name__ == '__main__':

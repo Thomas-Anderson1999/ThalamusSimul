@@ -34,7 +34,8 @@ def MoveDS(p1, p2, p3, p4, p5):
     return MoveDSFunc(p1,p2,p3,p4,p5)
 
 #int GetProfile(int axisIdx, float SimulTime, int *Time, float *Spd, float *Pos, unsigned char* State)
-def getProfile(axisIdx, SimulTime, timeSlice):
+def getProfile(axisIdx, SimulTime):
+    timeSlice = 1 #matching with #define TIME_SLICE 1
     bufferLen = int(float(SimulTime) * 1000 / float(timeSlice))
     Time = np.zeros(bufferLen, np.int32)
     Spd = np.zeros(bufferLen, np.float32)
