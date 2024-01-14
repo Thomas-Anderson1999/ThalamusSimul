@@ -27,6 +27,9 @@ def InitMCSimul():
     getCurrentStateFunc.argtypes = (ctypes.c_int, ctypes.c_void_p,)
     getCurrentStateFunc.restype = ctypes.c_int
 
+    global GetTimeSliceFunc
+    GetTimeSliceFunc = TestDLL['GetTimeSlice']
+
 def InitContoller(p1):
     return InitContollerFunc(p1)
 
@@ -35,7 +38,7 @@ def MoveDS(p1, p2, p3, p4, p5):
 
 #int GetProfile(int axisIdx, float SimulTime, int *Time, float *Spd, float *Pos, unsigned char* State)
 def getProfile(axisIdx, SimulTime):
-    timeSlice = 1 #matching with #define TIME_SLICE 1
+    timeSlice = GetTimeSlice()
     bufferLen = int(float(SimulTime) * 1000 / float(timeSlice))
     Time = np.zeros(bufferLen, np.int32)
     Spd = np.zeros(bufferLen, np.float32)
@@ -48,3 +51,6 @@ def getCurrentState(axisIdx):
     buff = np.zeros(2, np.float32)
     ret = getCurrentStateFunc(axisIdx, buff.ctypes)
     return ret, buff[0], buff[1] #state, spd, pos
+
+def GetTimeSlice():
+    return GetTimeSliceFunc()

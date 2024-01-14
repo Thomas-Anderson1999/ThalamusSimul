@@ -90,10 +90,10 @@ class Window(QWidget):
         subgrid, self.func3Edit = self.createGroupBox("Motion Control", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 6, 0)
 
-        label = [["1meter/pix", "moveable area", "GndPosX", "GndPosY"]]
-        editDefault = [["50"," 25", "29", "31"]]
-        buttonText = ["greedy Nav", "Navi Action", "Nav Clear", "MergeMap", "Test moving Obs"]
-        buttonFunc = [self.greedyNav, self.naviAction, self.navClear, self.mergeMap, self.testMvObs]
+        label = [["1meter/pix", "moveable area", "GndPosX", "GndPosY", "TagPixX", "TagPixY"]]
+        editDefault = [["50"," 25", "29", "31", "105", "206"]]
+        buttonText = ["greedy Nav", "Navi Action", "Nav Clear", "MergeMap", "Test moving Obs", "Global Nav"]
+        buttonFunc = [self.greedyNav, self.naviAction, self.navClear, self.mergeMap, self.testMvObs, self.globalNavi]
         subgrid, self.func4Edit = self.createGroupBox("Thalamus Navigation Test", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 7, 0)
 
@@ -108,7 +108,7 @@ class Window(QWidget):
         #-Init Motion Controller
 
         # +Motion Constant
-        self.timeSlice = 1
+        self.timeSlice = GetTimeSlice()
         self.wheelCircum = math.pi * (0.22 + 0.03)
         # -Motion Constant
 
@@ -125,6 +125,7 @@ class Window(QWidget):
         self.floorImgList = []
         self.floorCtrList = []
         self.rotposList = []
+        self.initBasePosAtt = None
         #-Navagation value
 
         #+moving obstacle
@@ -857,15 +858,37 @@ class Window(QWidget):
         self.greedNavRes = []
 
     def mergeMap(self):
-        mergeMap = mergeFloor(self.floorImgList, self.floorCtrList, self.rotposList)
+        mergeMap, repos = mergeFloor(self.floorImgList, self.floorCtrList, self.rotposList)
+        print(repos)
         cv2.imshow("mergeMap", mergeMap)
 
     def testMvObs(self):
         objID = 7
         obspos = GetObjPos(objID)
         SetObjPos(objID, obspos[0], obspos[1], 600)
-        self.movingObsParam = [1600, 2]
+        self.movingObsParam = [1600, 5]
 
+    def globalNavi(self):
+        meterPerPixel = int(self.func4Edit[0].text())
+        tgtX = int(self.func4Edit[4].text())
+        tgtY = int(self.func4Edit[5].text())
+
+        #+get Current Positiion
+        roverBaseID = 1
+        if self.initBasePosAtt is None:
+            _, _, self.initBasePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+        _, _, basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+        curPos = (np.array(basePosAtt) - np.array(self.initBasePosAtt)) / 1000
+        #-get Current Positiion
+
+        departPos = getPos2Pix(curPos[0],curPos[2], meterPerPixel)
+        departYaw = basePosAtt[4]
+        destPos = (tgtX, tgtY)
+        filename = "tmpResult/mergeMap.png"
+
+        self.greedNavRes = globalNav(departPos, departYaw, destPos, meterPerPixel, filename)
+        for action in self.greedNavRes:
+            print(action.action, action.value)
 
 if __name__ == '__main__':
     print(cv2.__version__)
