@@ -31,6 +31,10 @@ except:
     print("You need ThalamusNavigation submodule")
 #-Thalamus Navigation Logic
 
+#+vision logic
+from ThalamusNavigation.ThalamusCV.ThalamusCV.cvContext import *
+from ThalamusNavigation.ThalamusCV.ThalamusCV.cvUtil import *
+#-vision logic
 
 class Window(QWidget):
     def __init__(self, parent=None):
@@ -92,8 +96,8 @@ class Window(QWidget):
 
         label = [["1meter/pix", "moveable area", "GndPosX", "GndPosY", "TagPixX", "TagPixY"]]
         editDefault = [["50"," 25", "29", "31", "105", "206"]]
-        buttonText = ["greedy Nav", "Navi Action", "Nav Clear", "MergeMap", "Test moving Obs", "Global Nav"]
-        buttonFunc = [self.greedyNav, self.naviAction, self.navClear, self.mergeMap, self.testMvObs, self.globalNavi]
+        buttonText = ["greedy Nav", "Navi Action", "Nav Clear", "MergeMap", "Test moving Obs", "Global Nav", "Pred go St", "Pred rotate"]
+        buttonFunc = [self.greedyNav, self.naviAction, self.navClear, self.mergeMap, self.testMvObs, self.globalNavi, self.pedictionGoStraight, self.pedictionRotate]
         subgrid, self.func4Edit = self.createGroupBox("Thalamus Navigation Test", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 7, 0)
 
@@ -889,6 +893,86 @@ class Window(QWidget):
         self.greedNavRes = globalNav(departPos, departYaw, destPos, meterPerPixel, filename)
         for action in self.greedNavRes:
             print(action.action, action.value)
+
+
+    def getPredictionVertex(self, Color_image):
+        # +preprocess
+        preprocess1_opt = [
+            # (adjustOpt.size_RoiCrop, 100, 200, 500, 500),
+            (adjustOpt.size_Resize, 300, 300),  # 0
+            (adjustOpt.color_adj, cv2.COLOR_BGR2GRAY)  # 1
+        ]
+        preprocess1 = getAdjustedImg(Color_image, preprocess1_opt)
+        resizedImg = preprocess1[0]
+        grayImg = preprocess1[1]
+        # -preprocess
+
+        # +context
+        cutOffbboxOpt1 = [30, 30, 20, 20]
+        featureParams = [featureOpt.corner_GOOD2TRACK, dict(maxCorners=100, qualityLevel=0.1, minDistance=15, blockSize=14)]
+        # featureParams = [featureOpt.corner_FAST, 30]
+        trackingCriteria = dict(winSize=(15, 15), maxLevel=0, criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 15, 0.03))
+        context_opt1 = [(contextOpt.context_diff, 1),
+                        (contextOpt.context_optflow, cutOffbboxOpt1, featureParams, trackingCriteria)  # left, right, top, bottom, cut off on boder
+                        ]
+        imgContext = cimgContext(context_opt=context_opt1)
+        # +context
+
+        contextRes = imgContext.inputImg(grayImg)
+        contextRes = imgContext.inputImg(grayImg)
+
+        vertexList = []
+        if contextRes[1] is not None:
+            base_optKey, cur_optKey, idx_opt = contextRes[1]
+            optRes = show_optflow(resizedImg.copy(), base_optKey, cur_optKey, idx_opt)
+            #cv2.imshow("optical flow", optRes)
+
+            for pos in cur_optKey:
+                pos = pos[0]
+                pos = [pos[0] * 1280 / 300, pos[1] * 720 / 300]
+                dist, _, _, _, _, _ = ReturnDistance(pos[0], pos[1])
+                vtx3D = Pixelto3D(pos[0], pos[1], dist)
+                # print(pos, dist, vtx3D)
+                vertexList.append(vtx3D)
+        return vertexList, resizedImg, optRes
+
+    def pedictionGoStraight(self):
+        Color_image = self.getExtEngineImage()
+
+        vertexList, resizedImg, optRes = self.getPredictionVertex(Color_image)
+        def predictMotion():
+            distance = -float(self.func3Edit[6].text())
+            SetGlobalPosition(0, 0, distance * 1000)
+            InitializeRenderFacet(-1, -1)
+
+        res0, res1 = setPrediction(vertexList, predictMotion)
+
+        showres, angleList, pnt0List, pnt1List = getPredictionVisualization(res0, res1, width=300, height=300, showUnitArrow=False, arrowColor=(0,0,255))
+
+        # showOnce([showres, cv2.add(optRes, showres)], "prediction")
+        cv2.imshow("prediction", showres)
+        cv2.imshow("prediciton", cv2.add(optRes, showres))
+
+
+
+    def pedictionRotate(self):
+        Color_image = self.getExtEngineImage()
+
+        vertexList, resizedImg, optRes = self.getPredictionVertex(Color_image)
+        def predictMotion():
+            angle = -float(self.func3Edit[7].text())
+            SetGlobalAttitude(0, angle , 0)
+            InitializeRenderFacet(-1, -1)
+
+        res0, res1 = setPrediction(vertexList, predictMotion)
+
+        showres, angleList, pnt0List, pnt1List = getPredictionVisualization(res0, res1, width=300, height=300, showUnitArrow=False, arrowColor=(0,0,255))
+
+        #showOnce([showres, cv2.add(optRes, showres)], "prediction")
+        cv2.imshow("prediction", showres)
+        cv2.imshow("prediciton", cv2.add(optRes, showres))
+
+
 
 if __name__ == '__main__':
     print(cv2.__version__)
