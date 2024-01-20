@@ -149,9 +149,12 @@ class Window(QWidget):
 
         label = [["axis", "acc", "cruiseSpd", "dcc", "distance", "Simul Len"], ["Straight", "Rotate", "Cam Tilt", "File Save"]]
         editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0", "None"]]
-        buttonText = ["getProfile", "go Straigt", "Rotate", "cam Tilt", "View Sec1", "View Sec2", "View Sec3", "View Cam", "Clicked WayPnt"]
+        buttonText = ["getProfile", "go Straigt", "Rotate", "cam Tilt",
+                      "View Sec1", "View Sec2", "View Sec3", "View Cam",
+                      "Clicked WayPnt", "go Imd", "rot Imd", "tilt Imd"]
         buttonFunc = [self.motion_getProfile, self.motion_goFoward, self.motion_Rotate, self.motion_CamTilt,
-                      self.view_sec1, self.view_sec2, self.view_sec3, self.view_onCam, self.clickedWayPnt]
+                      self.view_sec1, self.view_sec2, self.view_sec3, self.view_onCam,
+                      self.clickedWayPnt, self.goImidiatly, self.rotImidiatly, self.tiltImidiatly]
         subgrid, self.func3Edit = self.createGroupBox("Motion Control", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 6, 0)
 
@@ -1040,6 +1043,45 @@ class Window(QWidget):
         cv2.imshow("BoundBox", BoundBoxImg)
         for detbbox in detList:
             print(detbbox.bboxCtrX, detbbox.bboxCtrY, detbbox.bboxClass, detbbox.pos3D)
+
+
+    def locomotionImidiatly(self, distance=0, angle=0):
+        roverBaseID = 1
+        self.posModelIO, self.rotModelIO, self.basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+
+        Yaw = self.basePosAtt[4] + angle
+        self.xDiff = distance * self.timeSlice * math.sin(Yaw * math.pi / 180.)
+        self.zDiff = distance * self.timeSlice * math.cos(Yaw * math.pi / 180.)
+
+        setModelPosRot(self.posModelIO,
+                       self.basePosAtt[0] + self.xDiff, self.basePosAtt[1], self.basePosAtt[2] + self.zDiff,
+                       0, 0, 0)
+        setModelPosRot(self.rotModelIO,
+                       0, 0, 0,
+                       self.basePosAtt[3], Yaw, self.basePosAtt[5])
+
+        if self.vehicleCamMode:
+            self.setCamView(Yaw, self.lastPitch)
+
+        InitializeRenderFacet(-1, -1)
+    def goImidiatly(self):
+        distance = float(self.func3Edit[6].text()) * 1000 #mm 2 Meter
+        self.locomotionImidiatly(distance=distance)
+    def rotImidiatly(self):
+        angle = float(self.func3Edit[7].text())
+        self.locomotionImidiatly(angle=angle)
+    def tiltImidiatly(self):
+        camBaseID = 3
+        self.posModelIO, self.rotModelIO, self.basePosAtt = self.getSrcPosAtt(camBaseID, -2, -1)  # get Src Position / Rotation
+        angle = float(self.func3Edit[8].text())
+
+        setModelPosRot(self.rotModelIO, 0, 0, 0, angle, self.basePosAtt[4], self.basePosAtt[5])
+
+        if self.vehicleCamMode:
+            self.setCamView(self.lastYaw, angle)
+
+        InitializeRenderFacet(-1, -1)
+        pass
 
 if __name__ == '__main__':
     print(cv2.__version__)
