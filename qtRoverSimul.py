@@ -903,10 +903,11 @@ class Window(QWidget):
             datasetAdd = np.array(basePosAtt) - np.array(self.offsetDSPosAtt)
             self.rotposList.append([self.datasetIndex, datasetAdd[0] / 1000, datasetAdd[1] / 1000, datasetAdd[2] / 1000, datasetAdd[3], datasetAdd[4], datasetAdd[5]])
             self.datasetIndex += 1
-            #
 
             for navRes in self.greedNavRes:
                 print("Nav res : ", navRes.action, navRes.value)
+        else: #there is nothing to move
+            self.greedNavRes = [cNavAction(navAction.tilt, 30)]
 
         os.chdir(curDir)
     #-Function Motion Control
