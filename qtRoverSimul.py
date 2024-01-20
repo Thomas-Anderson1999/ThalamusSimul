@@ -36,6 +36,67 @@ from ThalamusNavigation.ThalamusCV.ThalamusCV.cvContext import *
 from ThalamusNavigation.ThalamusCV.ThalamusCV.cvUtil import *
 #-vision logic
 
+
+
+#+Detection Simulation
+class detBoundingBox:
+    def __init__(self, x1, y1, x2, y2, detClass, pos3D, objID):
+        self.bboxPosX1 = x1
+        self.bboxPosY1 = y1
+        self.bboxPosX2 = x2
+        self.bboxPosY2 = y2
+        self.bboxCtrX = int((x1 + x2) / 2)
+        self.bboxCtrY = int((y1 + y2) / 2)
+        self.bboxWidth = x2 - x1
+        self.bboxHeight = y2 - y1
+        self.bboxClass = detClass
+        self.pos3D = pos3D
+        self.objId = objID
+
+def getSimulDetection():
+    MaxBoundBoxNum = 128
+    BoundBox = np.zeros(MaxBoundBoxNum * 4, np.int32)
+    BoundBoxNum = GetBoundBox(BoundBox.ctypes)
+    #print("BBNum " + str(BoundBoxNum))
+
+    SrcHeight = 720
+    SrcWidth = 1280
+    BoundBoxImg = np.zeros((SrcHeight, SrcWidth, 3), np.uint8)
+    GetColorImage(BoundBoxImg.ctypes, SrcWidth, SrcHeight)
+
+    detList = []
+    for i in range(BoundBoxNum):
+        x1 = BoundBox[4 * i + 0]
+        x2 = BoundBox[4 * i + 1]
+        y1 = BoundBox[4 * i + 2]
+        y2 = BoundBox[4 * i + 3]
+        #print("BoundBox : {0} {1} {2} {3}".format(x1, y1, x2, y2))
+
+        ctrX = int((x1 + x2) / 2)
+        ctrY = int((y1 + y2) / 2)
+
+        dist, objID, _, _, _, _ = ReturnDistance(ctrX, ctrY, False)
+        ojbName = GetObjName(objID)
+        if ojbName.find("DET") != -1:
+            tmpSplit = ojbName.split("_")
+            pos3D = Pixelto3D(ctrX,ctrY, dist)
+
+            if i != objID: # not Los in sight
+                continue
+            if not(0 <= x1 and x1 < SrcWidth and 0 <= y1 and y1 <= SrcHeight):
+                continue
+            if not(0 <= x1 and x1 < SrcWidth and 0 <= y1 and y1 <= SrcHeight):
+                continue
+
+            detList.append(detBoundingBox(x1, y1, x2, y2, int(tmpSplit[1]), pos3D, objID))
+            cv2.rectangle(BoundBoxImg, pt1=(x1, y1), pt2=(x2, y2), color=(0, 255, 0), thickness=1, lineType=cv2.LINE_4, shift=0)
+            Sz = 0.3
+            cv2.putText(BoundBoxImg, str(objID) + " " + ojbName, (ctrX, ctrY), cv2.FONT_HERSHEY_SIMPLEX, Sz, (0, 0, 255), 1, cv2.LINE_AA)
+
+    return BoundBoxImg, detList
+
+# -Detection Simulation
+
 class Window(QWidget):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
@@ -96,8 +157,10 @@ class Window(QWidget):
 
         label = [["1meter/pix", "moveable area", "GndPosX", "GndPosY", "TagPixX", "TagPixY"]]
         editDefault = [["50"," 25", "29", "31", "105", "206"]]
-        buttonText = ["greedy Nav", "Navi Action", "Nav Clear", "MergeMap", "Test moving Obs", "Global Nav", "Pred go St", "Pred rotate"]
-        buttonFunc = [self.greedyNav, self.naviAction, self.navClear, self.mergeMap, self.testMvObs, self.globalNavi, self.pedictionGoStraight, self.pedictionRotate]
+        buttonText = ["greedy Nav", "Navi Action", "Nav Clear", "MergeMap", "Test moving Obs", "Global Nav",
+                      "Pred go St", "Pred rotate", "Detect Local"]
+        buttonFunc = [self.greedyNav, self.naviAction, self.navClear, self.mergeMap, self.testMvObs, self.globalNavi,
+                      self.pedictionGoStraight, self.pedictionRotate, self.DetectLocal]
         subgrid, self.func4Edit = self.createGroupBox("Thalamus Navigation Test", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 7, 0)
 
@@ -972,7 +1035,11 @@ class Window(QWidget):
         cv2.imshow("prediction", showres)
         cv2.imshow("prediciton", cv2.add(optRes, showres))
 
-
+    def DetectLocal(self):
+        BoundBoxImg, detList = getSimulDetection()
+        cv2.imshow("BoundBox", BoundBoxImg)
+        for detbbox in detList:
+            print(detbbox.bboxCtrX, detbbox.bboxCtrY, detbbox.bboxClass, detbbox.pos3D)
 
 if __name__ == '__main__':
     print(cv2.__version__)
