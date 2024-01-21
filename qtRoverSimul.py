@@ -53,6 +53,17 @@ class detBoundingBox:
         self.pos3D = pos3D
         self.objId = objID
 
+class detMilestne:
+    def __init__(self, pos3D, cls):
+        self.pos3D = pos3D
+        self.classID = cls
+
+def searchClosePnt(milestoneList, pos, th):
+    for k in range(len(milestoneList)):
+        if math.sqrt((milestoneList[k].pos3D[0] - pos[0])**2 + (milestoneList[k].pos3D[1] - pos[1])**2 + (milestoneList[k].pos3D[2] - pos[2])**2) < th:
+            return k
+    return -1
+
 def getSimulDetection():
     MaxBoundBoxNum = 128
     BoundBox = np.zeros(MaxBoundBoxNum * 4, np.int32)
@@ -79,7 +90,8 @@ def getSimulDetection():
         ojbName = GetObjName(objID)
         if ojbName.find("DET") != -1:
             tmpSplit = ojbName.split("_")
-            pos3D = Pixelto3D(ctrX,ctrY, dist)
+
+            pos3D = list(Pixelto3D(ctrX,ctrY, dist))
 
             if i != objID: # not Los in sight
                 continue
@@ -196,6 +208,7 @@ class Window(QWidget):
         self.floorCtrList = []
         self.rotposList = []
         self.initBasePosAtt = None
+        self.milestoneList = []
         #-Navagation value
 
         #+moving obstacle
@@ -1040,12 +1053,76 @@ class Window(QWidget):
         cv2.imshow("prediciton", cv2.add(optRes, showres))
 
     def DetectLocal(self):
+        mdlFrame = getLocalFrame(self.camMdlIdx)
         BoundBoxImg, detList = getSimulDetection()
         cv2.imshow("BoundBox", BoundBoxImg)
         for detbbox in detList:
             print(detbbox.bboxCtrX, detbbox.bboxCtrY, detbbox.bboxClass, detbbox.pos3D)
+        if len(detList) == 0:
+            print("Nothing to detect")
+            return
 
+        #+ r
+        roverBaseID = 1
+        _, _, basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+        vertexList = []
+        for detbbox in detList:
+            vertexList.append(tuple(detbbox.pos3D))
+        def predictMotion():
+            SetGlobalAttitude(-self.lastPitch, basePosAtt[4], basePosAtt[5])
+            InitializeRenderFacet(-1, -1)
 
+        res0, res1 = setPrediction(vertexList, predictMotion)
+        #print(res0)
+        #print(res1)
+        tmpPos = []
+        for idx, detbbox in enumerate(detList):
+            res = res1[idx]
+            pos = [basePosAtt[0]+res[0], basePosAtt[1]+res[1], basePosAtt[2]+res[2]]
+            tmpPos.append(pos)
+
+            closeKey = searchClosePnt(self.milestoneList, pos, 500)
+            if -1 == closeKey:
+                self.milestoneList.append(detMilestne(pos, detbbox.bboxClass))
+            else: #Update
+                self.milestoneList[closeKey].pos3D[0] = (self.milestoneList[closeKey].pos3D[0] + pos[0]) / 2
+                self.milestoneList[closeKey].pos3D[1] = (self.milestoneList[closeKey].pos3D[1] + pos[1]) / 2
+                self.milestoneList[closeKey].pos3D[2] = (self.milestoneList[closeKey].pos3D[2] + pos[2]) / 2
+
+        #+write file with offset
+        offset = [0, -750, 0] #offset, camera height from rover base
+        with open("milstones.txt", "w") as f:
+            for milestone in self.milestoneList:
+                print(milestone.pos3D, milestone.classID)
+                f.write("{0} {1} {2} {3}\n".format(milestone.pos3D[0] + offset[0], milestone.pos3D[1] + offset[1], milestone.pos3D[2] + offset[2], milestone.classID))
+        #- write file with offset
+
+        #+Display Result
+        npTmpPos = np.array(tmpPos)
+
+        xAvgPix = int(np.average(npTmpPos[:, 0]) / 1000 * 50)
+        yAvgPix = int(np.average(npTmpPos[:, 1]) / 1000 * 50)
+
+        msMap = np.zeros((1000, 1000, 3), np.uint8)
+        for milestone in self.milestoneList:
+            x = int(milestone.pos3D[0] / 1000 * 50)
+            y = int(-milestone.pos3D[2] / 1000 * 50)
+
+            color = (0,0,0)
+            if milestone.classID == 0:
+                color = (255,255,255)
+            if milestone.classID == 1:
+                color = (255, 0, 0)
+            if milestone.classID == 2:
+                color = (0, 255, 0)
+            if milestone.classID == 3:
+                color = (255, 255, 0)
+            if milestone.classID == 4:
+                color = (255, 0, 255)
+            cv2.drawMarker(msMap, (500 + x - xAvgPix, 500 + y - yAvgPix), color=color, markerType=cv2.MARKER_CROSS, thickness=1, markerSize=15)
+
+        cv2.imshow("milestone Map", msMap)
+        #-Display Result
     def locomotionImidiatly(self, distance=0, angle=0):
         roverBaseID = 1
         self.posModelIO, self.rotModelIO, self.basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
