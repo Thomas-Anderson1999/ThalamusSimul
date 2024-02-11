@@ -64,6 +64,20 @@ def searchClosePnt(milestoneList, pos, th):
             return k
     return -1
 
+def getDetecColor(classID):
+    color = (0, 0, 0)
+    if classID == 0:
+        color = (255, 255, 255)
+    if classID == 1:
+        color = (255, 0, 0)
+    if classID == 2:
+        color = (0, 255, 0)
+    if classID == 3:
+        color = (255, 255, 0)
+    if classID == 4:
+        color = (255, 0, 255)
+    return color
+
 def getSimulDetection():
     MaxBoundBoxNum = 128
     BoundBox = np.zeros(MaxBoundBoxNum * 4, np.int32)
@@ -91,8 +105,6 @@ def getSimulDetection():
         if ojbName.find("DET") != -1:
             tmpSplit = ojbName.split("_")
 
-            pos3D = list(Pixelto3D(ctrX,ctrY, dist))
-
             if i != objID: # not Los in sight
                 continue
             if not(0 <= x1 and x1 < SrcWidth and 0 <= y1 and y1 <= SrcHeight):
@@ -100,8 +112,10 @@ def getSimulDetection():
             if not(0 <= x1 and x1 < SrcWidth and 0 <= y1 and y1 <= SrcHeight):
                 continue
 
+            print(ctrX, ctrY, dist)
+            pos3D = list(Pixelto3D(ctrX, ctrY, dist))
             detList.append(detBoundingBox(x1, y1, x2, y2, int(tmpSplit[1]), pos3D, objID))
-            cv2.rectangle(BoundBoxImg, pt1=(x1, y1), pt2=(x2, y2), color=(0, 255, 0), thickness=1, lineType=cv2.LINE_4, shift=0)
+            cv2.rectangle(BoundBoxImg, pt1=(x1, y1), pt2=(x2, y2), color=(0, 255, 0), thickness=3, lineType=cv2.LINE_4, shift=0)
             Sz = 0.3
             cv2.putText(BoundBoxImg, str(objID) + " " + ojbName, (ctrX, ctrY), cv2.FONT_HERSHEY_SIMPLEX, Sz, (0, 0, 255), 1, cv2.LINE_AA)
 
@@ -731,8 +745,12 @@ class Window(QWidget):
             #+video
             self.vidOut = None
             if self.func3Edit[9].text() != "None":
+                try:
+                    os.mkdir("tmpDataset")
+                except:
+                    pass
                 fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
-                self.vidOut = cv2.VideoWriter(self.func3Edit[9].text()+'.avi', fourcc, 30, (1280, 720))
+                self.vidOut = cv2.VideoWriter("tmpDataset/" + self.func3Edit[9].text()+'.avi', fourcc, 30, (1280, 720))
             #-video
         #+locomotion Modeling
 
@@ -780,6 +798,30 @@ class Window(QWidget):
                 Color_image = self.getExtEngineImage()
                 cv2.imshow("Color_image", Color_image)
                 self.vidOut.write(Color_image)
+            # -video
+
+                #+depth file write
+                SrcPosX, SrcPosY, SrcWidth, SrcHeight, DestWidth, DestHeight, ObjID, CPUCore = self.getFunc1Param()
+
+                Depth_Map = np.zeros((DestHeight, DestWidth), np.float32)
+                Depth_Mask = np.zeros((DestHeight, DestWidth, 3), np.uint8)
+
+                t0 = time.monotonic()
+                GetDepthMap(Depth_Map.ctypes, Depth_Mask.ctypes, DestWidth, DestHeight, CPUCore, SrcPosX, SrcPosY, SrcWidth, SrcHeight, ObjID)
+                t1 = time.monotonic() - t0
+                print("Time elapsed: ", t1)
+
+                SaveRawDepthFile('tmpDataset/DepthMap%04d.txt' % self.simulCnt, Depth_Map)
+
+                #-depth file write
+                #+ground truth
+                with open("tmpDataset/groundTruth.txt", 'a') as f:
+                    roverBaseID = 1
+                    _, _, posAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+                    posAtt = np.array(posAtt)
+                    posAtt -= np.array(self.basePosAtt)
+                    f.write(f"{posAtt[0]}\t{posAtt[1]}\t{posAtt[2]}\t{posAtt[3]}\t{posAtt[4]}\t{posAtt[5]}\n")
+                # -ground truth
             # -video
             else:
                 InitializeRenderFacet(-1, -1)
@@ -904,7 +946,7 @@ class Window(QWidget):
 
         self.greedNavRes, floorMask, ctrPos = getGreedyNav(meterPerPixel, GndPosX=gndX, GndPosY=gndY, dFilename=None, EngNum=1, erodeCnt=erodcnt, compAtt=(-self.lastPitch,0,0))
         if self.greedNavRes is not None:
-            self.floorImgList.append(floorMask)
+            self.floorImgList.append(floorMask[0])
             self.floorCtrList.append(ctrPos)
 
             roverBaseID = 1
@@ -950,7 +992,7 @@ class Window(QWidget):
         objID = 7
         obspos = GetObjPos(objID)
         SetObjPos(objID, obspos[0], obspos[1], 600)
-        self.movingObsParam = [1600, 5]
+        self.movingObsParam = [1600, 3]
 
     def globalNavi(self):
         meterPerPixel = int(self.func4Edit[0].text())
@@ -1064,7 +1106,20 @@ class Window(QWidget):
 
         #+ r
         roverBaseID = 1
+
+        if self.initBasePosAtt is None :
+            _, _, self.initBasePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
         _, _, basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+        basePosAtt = list(np.array(basePosAtt) - np.array(self.initBasePosAtt))
+
+
+        #+local position save
+        offset = [0, -750, 0]  # offset, camera height from rover base
+        with open("localMilstones.txt", "w") as f:
+            for detbbox in detList:
+                f.write("{0} {1} {2} {3}\n".format(detbbox.pos3D[0]+offset[0], detbbox.pos3D[1]+offset[1], detbbox.pos3D[2]+offset[2], detbbox.bboxClass))
+        #-local position save
+
         vertexList = []
         for detbbox in detList:
             vertexList.append(tuple(detbbox.pos3D))
@@ -1090,7 +1145,6 @@ class Window(QWidget):
                 self.milestoneList[closeKey].pos3D[2] = (self.milestoneList[closeKey].pos3D[2] + pos[2]) / 2
 
         #+write file with offset
-        offset = [0, -750, 0] #offset, camera height from rover base
         with open("milstones.txt", "w") as f:
             for milestone in self.milestoneList:
                 print(milestone.pos3D, milestone.classID)
