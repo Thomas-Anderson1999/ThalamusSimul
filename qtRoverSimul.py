@@ -811,7 +811,7 @@ class Window(QWidget):
                 t1 = time.monotonic() - t0
                 print("Time elapsed: ", t1)
 
-                SaveRawDepthFile('tmpDataset/DepthMap%04d.txt' % self.simulCnt, Depth_Map)
+                SaveRawDepthFile('tmpDataset/DepthMap%04d.txt' % int(self.simulCnt/self.refreshRate), Depth_Map)
 
                 #-depth file write
                 #+ground truth
