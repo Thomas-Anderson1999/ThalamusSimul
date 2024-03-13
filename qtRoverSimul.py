@@ -5,6 +5,7 @@ import os
 import numpy as np
 import time
 import math
+import json
 
 from ThalamusEngine.Interface import *
 from matplotlib import pyplot as plt
@@ -159,9 +160,9 @@ class Window(QWidget):
 
         label = [["SrcPosX", "SrcPosY", "SrcWidth", "SrcHeight", "DestWidth", "DestHeight"], ["ObjID", "CPU Core", "Dataset"]]
         editDefault = [["0", "0", "1280", "720", "300", "300"], ["-1", "12", "01"]]
-        buttonText = ["DepthMap", "ColorMap", "NoShade", "LightEff", "Bounding Box", "ext EngColor", "DataSet Adding"]
+        buttonText = ["DepthMap", "ColorMap", "NoShade", "LightEff", "Bounding Box", "ext EngColor", "getRasterImg", "DataSet Adding"]
         buttonFunc = [self.funcDepthMap, self.funcColorMap, self.funcNoShade, self.funcLightEffect, self.funcBBox,
-                      self.funcExtEngineViewMap, self.funcDatasetAdding]
+                      self.funcExtEngineViewMap, self.getRasterImg, self.funcDatasetAdding]
         subgrid, self.func1Edit = self.createGroupBox("Scene Generation", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 4, 0)
 
@@ -229,6 +230,16 @@ class Window(QWidget):
         self.movingObsParam = None
         #-moving obstacle
 
+        #dataset meta file
+        self.datasetMeta = {}
+        self.datasetPath = "tmpDataset/"
+        self.datasetMeta["depthmapFile"] = "DepthMap.bin"
+        self.datasetMeta["image"] = "img.avi"
+        self.datasetMeta["groundtruth"] = "groundTruth.txt"
+        self.datasetMeta["DepthWidth"] = 0
+        self.datasetMeta["DepthHeight"] = 0
+        # dataset meta file
+
     def createGroupBox(self, gbxName, labeltext, editDefault, buttonText, buttonFunc):
         groupBox = QGroupBox(gbxName)
         grid = QGridLayout()
@@ -260,7 +271,6 @@ class Window(QWidget):
         AsmFileName = self.startEdit[0].text().encode('UTF-8')
         SimWindowText = self.startEdit[1].text().encode('UTF-8')
         if True == LoadThalamusInterface():
-
             errCode = InitEngine(AsmFileName)
             if errCode != 0:
                 errMsg = ""
@@ -470,6 +480,21 @@ class Window(QWidget):
         Color_image = self.getExtEngineImage()
         cv2.imshow("External Engine Color Image", Color_image)
         cv2.imwrite("extColor.png", Color_image)
+
+    def getRasterImg(self):
+        SrcPosX, SrcPosY, SrcWidth, SrcHeight, DestWidth, DestHeight, ObjID, CPUCore = self.getFunc1Param()
+        Color_width = 1280
+        Color_Height = 720
+
+        Color_image = np.zeros((Color_Height, Color_width, 3), np.uint8)
+        Depth_Map = np.zeros((Color_Height, Color_width), np.float32)
+        Depth_Mask = np.zeros((Color_Height, Color_width, 3), np.uint8)
+
+        InitializeRenderFacet(-1, -1)  # refresh
+
+        GetRasterizedImage(Color_image.ctypes, Depth_Map.ctypes, Depth_Mask.ctypes,
+                           Color_width, Color_Height, CPUCore, SrcPosX, SrcPosY, SrcWidth, SrcHeight, ObjID)
+        cv2.imshow("Rasterizing Color Image", Color_image)
 
     def funcDatasetAdding(self):
         roverBaseID = 1
@@ -746,11 +771,21 @@ class Window(QWidget):
             self.vidOut = None
             if self.func3Edit[9].text() != "None":
                 try:
-                    os.mkdir("tmpDataset")
+                    os.mkdir(self.datasetPath)
                 except:
                     pass
                 fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
-                self.vidOut = cv2.VideoWriter("tmpDataset/" + self.func3Edit[9].text()+'.avi', fourcc, 30, (1280, 720))
+                self.datasetMeta["image"] = self.func3Edit[9].text() + '.avi'
+                self.vidOut = cv2.VideoWriter(self.datasetPath + self.datasetMeta["image"], fourcc, 30, (1280, 720))
+
+                #+metafile for dataset
+                _, _, _, _, DestWidth, DestHeight, _, _ = self.getFunc1Param()
+                self.datasetMeta["DepthWidth"] = DestWidth
+                self.datasetMeta["DepthHeight"] = DestHeight
+                with open(self.datasetPath +'meta.json', 'w') as fp:
+                    json.dump(self.datasetMeta, fp)
+                #-metafile for dataset
+
             #-video
         #+locomotion Modeling
 
@@ -766,7 +801,7 @@ class Window(QWidget):
         tmpPosDiff = (self.leftSpd[self.simulCnt] + self.rightSpd[self.simulCnt]) / 2
         self.xDiff += tmpPosDiff * self.timeSlice * math.sin(Yaw * math.pi / 180.)
         self.zDiff += tmpPosDiff * self.timeSlice * math.cos(Yaw * math.pi / 180.)
-        print(Yaw, tmpPosDiff)
+        #print(Yaw, tmpPosDiff)
         #-locomotion Modeling
 
         #+moving obstacle
@@ -811,11 +846,14 @@ class Window(QWidget):
                 t1 = time.monotonic() - t0
                 print("Time elapsed: ", t1)
 
-                SaveRawDepthFile('tmpDataset/DepthMap%04d.txt' % int(self.simulCnt/self.refreshRate), Depth_Map)
+                #Signle File Mode
+                SaveRawSingleDepthFile("tmpDataset/DepthMap.bin", Depth_Map)
+                #seperateMode
+                #SaveRawSeperateDepthFile('tmpDataset/DepthMap%04d.txt' % int(self.simulCnt/self.refreshRate), Depth_Map)
 
                 #-depth file write
                 #+ground truth
-                with open("tmpDataset/groundTruth.txt", 'a') as f:
+                with open(self.datasetPath+self.datasetMeta["groundtruth"], 'a') as f:
                     roverBaseID = 1
                     _, _, posAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
                     posAtt = np.array(posAtt)
@@ -850,6 +888,8 @@ class Window(QWidget):
                 fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
                 self.vidOut = cv2.VideoWriter(self.func3Edit[9].text() + '.avi', fourcc, 30, (1280, 720))
             # -video
+
+
 
         # +Refresh
         if self.simulCnt % self.refreshRate == 0:
