@@ -495,6 +495,12 @@ class Window(QWidget):
         GetRasterizedImage(Color_image.ctypes, Depth_Map.ctypes, Depth_Mask.ctypes,
                            Color_width, Color_Height, CPUCore, SrcPosX, SrcPosY, SrcWidth, SrcHeight, ObjID)
         cv2.imshow("Rasterizing Color Image", Color_image)
+        """
+        ObjIDMask, FaceIDMask, EdgeMask = cv2.split(Depth_Mask)
+        Depth_Map = cv2.normalize(Depth_Map, None, alpha=0, beta=1.0, norm_type=cv2.NORM_MINMAX)
+        cv2.imshow("Depth Map", Depth_Map)
+        cv2.imshow("Depth Mask", EdgeMask)
+        """
 
     def funcDatasetAdding(self):
         roverBaseID = 1
