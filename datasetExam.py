@@ -1,38 +1,20 @@
 import cv2
-import numpy as np
-import json
 from ThalamusEngine.Interface import *
-def getGroundTruth(filename):
-    res = []
-    with open(filename, "r") as f:
-        lines = f.readlines()
-        for line in lines:
-            #print(line)
-            tmpLins = line.split("\t")
-            res.append([float(tmp) for tmp in tmpLins])
-    return np.array(res)
+from ThalamusDSloader import *
 
 if __name__ == '__main__':
 
     datasetPath = "tmpDataset/"
 
-    with open(datasetPath+"meta.json", "r") as fpjson:
-        datasetMeta = json.load(fpjson)
-        #print(datasetMeta)
-
-        image_FileName = datasetPath + datasetMeta["image"]
-        groundtruth_Filename = datasetPath + datasetMeta["groundtruth"]
-        depth_Filename = datasetPath + datasetMeta["depthmapFile"]
-        depth_Width = datasetMeta["DepthWidth"]
-        depth_Height = datasetMeta["DepthHeight"]
+    image_FileName, groundtruth_Filename, depth_Filename, depth_Width, depth_Height = getMetadata(datasetPath=datasetPath, filename="meta.json")
+    if image_FileName != None:
         print(image_FileName, groundtruth_Filename, depth_Filename, depth_Width, depth_Height)
 
         GroundTruth = getGroundTruth(groundtruth_Filename)
         #print(GroundTruth)
 
         if True == LoadThalamusInterface():
-            print("aaa")
-
+            print("open Engine")
 
         cap = cv2.VideoCapture(image_FileName)
         imgcnt = 0
