@@ -661,7 +661,10 @@ class Window(QWidget):
         ret, Time, Spd, Pos, State = getProfile(axisIdx, simulTime)
 
 
-        plt.plot(Time, Spd, label="spd")
+        plt.plot(Time, Spd, label="Speed Profile")
+        plt.ylabel('Speed of profile(m/sec)', fontsize=12)
+        plt.xlabel('Time(ms)', fontsize=12)
+        #plt.plot(Time, Pos, label="Position Profile")
         plt.legend()
         plt.show()
         """
