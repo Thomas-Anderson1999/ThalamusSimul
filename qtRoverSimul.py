@@ -10,6 +10,7 @@ import json
 from ThalamusEngine.Interface import *
 from matplotlib import pyplot as plt
 from MCLib.mcInterface import *
+from ThalamusDSloader import *
 
 #+UI
 from PyQt5.QtWidgets import *
@@ -33,8 +34,11 @@ except:
 #-Thalamus Navigation Logic
 
 #+vision logic
-from ThalamusNavigation.ThalamusCV.ThalamusCV.cvContext import *
-from ThalamusNavigation.ThalamusCV.ThalamusCV.cvUtil import *
+try:
+    from ThalamusNavigation.ThalamusCV.ThalamusCV.cvContext import *
+    from ThalamusNavigation.ThalamusCV.ThalamusCV.cvUtil import *
+except:
+    print("You need ThalamusCV submodule")
 #-vision logic
 
 
@@ -168,8 +172,8 @@ class Window(QWidget):
 
         label = [["DepthMap:", "Width", "Height", "MeshUp Inv", "FreeModelNum", "Thread"],["ColorImg:"]]
         editDefault = [["depthmap.txt","300", "300", "9", "5", "12"],["Dataset03/Color03.png"]]
-        buttonText = ["MeshUp", "Texture Overay", "Texure Int", "TextureView"]
-        buttonFunc = [self.func2MeshUp, self.func2TexOveray, self.func2TexInt, self.func2TexView]
+        buttonText = ["MeshUp", "Texture Overay", "Texure Int", "TextureView", "pseudo lidar"]
+        buttonFunc = [self.func2MeshUp, self.func2TexOveray, self.func2TexInt, self.func2TexView, self.Func2PsedoLidar]
         subgrid, self.func2Edit = self.createGroupBox("Mesh up, Texture Overay", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 5, 0)
 
@@ -456,7 +460,7 @@ class Window(QWidget):
         t1 = time.monotonic() - t0
         print("Time elapsed: ", t1)
 
-        SaveRawDepthFile('depthmap.txt', Depth_Map)
+        SaveRawSeperateDepthFile('depthmap.txt', Depth_Map)
 
         ObjIDMask, FaceIDMask, EdgeMask = cv2.split(Depth_Mask)
         Depth_Map = cv2.normalize(Depth_Map, None, alpha=0, beta=1.0, norm_type=cv2.NORM_MINMAX)
@@ -483,8 +487,8 @@ class Window(QWidget):
 
     def getRasterImg(self):
         SrcPosX, SrcPosY, SrcWidth, SrcHeight, DestWidth, DestHeight, ObjID, CPUCore = self.getFunc1Param()
-        Color_width = 1280
-        Color_Height = 720
+        Color_width = 640
+        Color_Height = 360
 
         Color_image = np.zeros((Color_Height, Color_width, 3), np.uint8)
         Depth_Map = np.zeros((Color_Height, Color_width), np.float32)
@@ -495,12 +499,12 @@ class Window(QWidget):
         GetRasterizedImage(Color_image.ctypes, Depth_Map.ctypes, Depth_Mask.ctypes,
                            Color_width, Color_Height, CPUCore, SrcPosX, SrcPosY, SrcWidth, SrcHeight, ObjID)
         cv2.imshow("Rasterizing Color Image", Color_image)
-        """
+
         ObjIDMask, FaceIDMask, EdgeMask = cv2.split(Depth_Mask)
         Depth_Map = cv2.normalize(Depth_Map, None, alpha=0, beta=1.0, norm_type=cv2.NORM_MINMAX)
         cv2.imshow("Depth Map", Depth_Map)
         cv2.imshow("Depth Mask", EdgeMask)
-        """
+
 
     def funcDatasetAdding(self):
         roverBaseID = 1
@@ -563,7 +567,7 @@ class Window(QWidget):
         t1 = time.monotonic() - t0
         print("Time elapsed: ", t1)
         fname = datasetPath + "/depth" + str("%03d" % self.datasetIndex) + ".txt"
-        SaveRawDepthFile(fname, Depth_Map)
+        SaveRawSeperateDepthFile(fname, Depth_Map)
         #-depth map
 
         self.datasetIndex += 1
@@ -603,6 +607,87 @@ class Window(QWidget):
 
     #+Function 2
     #buttonFunc = [self.func2MeshUp, self.func2TexOveray, self.func2TexInt, self.func2TexView]
+
+    def Func2PsedoLidar(self):
+
+        roverBaseID = 1
+        posModelIO, rotModelIO, basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
+
+        px = basePosAtt[0]
+        pz = basePosAtt[2]
+        pyaw = basePosAtt[4]
+
+        px = 0
+        pz = 3000
+        pyaw = 180
+
+        sampleY = int(720/2)
+
+
+
+        # + actual sensor sampling
+        """
+        InitializeRenderFacet(-1, -1)
+        r, _, _, _, _, _ = ReturnDistance(0, 0, True)
+        actual_Pos = []
+        for x in range(1280):
+            r, _, _, _, _, _ = ReturnDistance(int(x), sampleY, False)
+            if r < 6000:
+                pos = Pixelto3D(x, sampleY, r)
+                pos = list(pos)
+
+                pos[0] *= -1
+                pos[2] *= -1
+
+                pos[0] += px
+                pos[2] += pz
+                actual_Pos.append(pos)
+        actual_Pos = np.array(actual_Pos)
+        """
+        # - actual sensor sampling
+
+        actual_Pos = getTextData("temp_recon.txt")
+        actual_Pos[0] *= -1
+        actual_Pos[2] *= -1
+        actual_Pos[2] += 1100
+
+        #+ reconstruction sampling
+        SetProcessingEngineIndex(1)
+        InitializeRenderFacet(-1, -1)
+        r, _, _, _, _, _ = ReturnDistance(0, 0, True)
+
+        recon_Pos = []
+        #f = open("temp_recon.txt", 'w')
+        for x in range(1280):
+            r, _, _, _, _, _ = ReturnDistance(int(x), sampleY, False)
+            if r < 6000:
+                pos = Pixelto3D(x, sampleY, r)
+                recon_Pos.append([pos[0], pos[1], pos[2]])
+                #f.write(str(pos[0]) + " " + str(pos[1]) + " " + str(pos[2]) + "\r\n")
+        #f.close()
+        SetProcessingEngineIndex(0)
+        recon_Pos = np.array(recon_Pos)
+        # - reconstruction sampling
+
+
+        plt.title('Pseudo Sensor')
+        #actual = plt.scatter(actual_Pos[:, 0], actual_Pos[:, 2], s=1)
+        actual = plt.scatter(actual_Pos[0], actual_Pos[2], s=1)
+        recon = plt.scatter(recon_Pos[:,0], recon_Pos[:,2], s=1)
+
+        plt.legend((actual, recon),
+                   ('Current FOV', 'Reconstruction Sampling'),
+                   scatterpoints=1,
+                   loc='upper left',
+                   ncol=1,
+                   fontsize=10)
+        plt.arrow(px, pz, 0, -1, head_width=0.05, head_length=0.05, fc='red', ec='red')
+        plt.axis('equal')
+
+        plt.show()
+
+        pass
+
     def func2MeshUp(self):
 
         depWidth = int(self.func2Edit[1].text())
@@ -613,14 +698,21 @@ class Window(QWidget):
         Depth_Map = np.zeros((depHeight, depWidth), np.float32)
         Depth_Mask = np.zeros((depHeight, depWidth, 3), np.uint8)
 
+        AsmFileName = b"ScriptFreeModel.txt"
+        InitEngine(AsmFileName, 1280, 720, 1)
+        SetProcessingEngineIndex(1)
         if 0 != LoadBinDepthMapPnt(self.func2Edit[0].text(), depWidth, depHeight, 600, 6000, Depth_Map.ctypes, Depth_Mask.ctypes):
+            ret = ObjMeshUp(depWidth, depHeight, MeshUpType, depInv)
+
             Depth_Map = cv2.normalize(Depth_Map, None, alpha=0, beta=1.0, norm_type=cv2.NORM_MINMAX)
             cv2.imshow("Depth Map", Depth_Map)
-            ret = ObjMeshUp(depWidth, depHeight, MeshUpType, depInv)
+
             print(ret)
             InitializeRenderFacet(-1, -1)
         else:
             print("Loading Error")
+        SetProcessingEngineIndex(0)
+
     def func2TexOveray(self):
         depWidth = int(self.func2Edit[1].text())
         depHeight = int(self.func2Edit[2].text())
