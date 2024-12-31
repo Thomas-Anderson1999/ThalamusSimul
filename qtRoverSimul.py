@@ -128,6 +128,19 @@ def getSimulDetection():
 
 # -Detection Simulation
 
+#+Util
+def find_objbyname(search_name):
+    objlist = []
+    obj_id = 0
+    modelLen, modelList = getModelList(1024)
+    for mdlIdx, modelName in enumerate(modelList):
+        if not(modelName == "ACTION_PUSH" or modelName == "ACTION_POP"):
+            if -1 != modelName.find(search_name):
+                objlist.append(obj_id)
+            obj_id += 1
+    return objlist
+#-Util
+
 class Window(QWidget):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
@@ -178,13 +191,13 @@ class Window(QWidget):
         mainGrid.addWidget(subgrid, 5, 0)
 
 
-        label = [["axis", "acc", "cruiseSpd", "dcc", "distance", "Simul Len"], ["Straight", "Rotate", "Cam Tilt", "File Save"]]
-        editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0", "None"]]
-        buttonText = ["getProfile", "go Straigt", "Rotate", "cam Tilt",
-                      "View Sec1", "View Sec2", "View Sec3", "View Cam",
+        label = [["axis", "acc", "cruiseSpd", "dcc", "distance", "Simul Len"], ["Straight", "Rotate", "Cam Tilt", "File Save", "Vehicle"]]
+        editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0", "None", "Drone1"]]
+        buttonText = ["getProfile", "go Straigt", "go LR", "go Updn", "Rotate",
+                      "cam Tilt", "View Sec1", "View Sec2", "View Sec3", "View Cam",
                       "Clicked WayPnt", "go Imd", "rot Imd", "tilt Imd"]
-        buttonFunc = [self.motion_getProfile, self.motion_goFoward, self.motion_Rotate, self.motion_CamTilt,
-                      self.view_sec1, self.view_sec2, self.view_sec3, self.view_onCam,
+        buttonFunc = [self.motion_getProfile, self.motion_goFoward, self.motion_goLeftRight, self.motion_goUpdown, self.motion_Rotate,
+                      self.motion_CamTilt, self.view_sec1, self.view_sec2, self.view_sec3, self.view_onCam,
                       self.clickedWayPnt, self.goImidiatly, self.rotImidiatly, self.tiltImidiatly]
         subgrid, self.func3Edit = self.createGroupBox("Motion Control", label, editDefault, buttonText, buttonFunc)
         mainGrid.addWidget(subgrid, 6, 0)
@@ -507,7 +520,7 @@ class Window(QWidget):
 
 
     def funcDatasetAdding(self):
-        roverBaseID = 1
+        roverBaseID = find_objbyname(self.VehicleName)[0]
         datasetPath = "dataset"
         datasetWH = 300
 
@@ -610,7 +623,7 @@ class Window(QWidget):
 
     def Func2PsedoLidar(self):
 
-        roverBaseID = 1
+        roverBaseID = find_objbyname(self.VehicleName)[0]
         posModelIO, rotModelIO, basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
 
         px = basePosAtt[0]
@@ -785,11 +798,47 @@ class Window(QWidget):
         self.rightPos = rightSign * Pos.copy()
         self.leftSpd = leftSign * Spd.copy()
         self.rightSpd = rightSign * Spd.copy()
+
+        #+ smoothing torque : for drone motion
+        len_torque = len(self.rightSpd)
+        for idx in range(len(State)):
+            if State[idx] == 3:
+                len_torque = idx
+                break
+        self.smooth_torque = np.zeros(len_torque, np.float32)
+        mv_bufflen = 500
+        mv_idx = 0
+        for _idx in range(len_torque//2):
+            idx = _idx
+            if _idx == 0:
+                mv_buff = np.zeros(mv_bufflen, np.float32)
+            else:
+                mv_buff[mv_idx % mv_bufflen] = self.rightSpd[idx] - self.rightSpd[idx-1]
+            self.smooth_torque[idx] = np.average(mv_buff)
+            mv_idx += 1
+        for _idx in range(len_torque-1, len_torque//2-1, -1):
+            idx = _idx
+            if _idx == len_torque-1:
+                mv_buff = np.zeros(mv_bufflen, np.float32)
+            else:
+                mv_buff[mv_idx % mv_bufflen] = self.rightSpd[idx] - self.rightSpd[idx-1]
+            self.smooth_torque[idx] = np.average(mv_buff)
+            mv_idx += 1
+        # - smoothing torque
+        """
+        plt.plot(self.smooth_torque, label="smooth_torque")
+        plt.legend()
+        plt.show()
+        """
         self.motionState = State
         # -get profile
 
     def startSimulTimer(self, timerFunc):
         # +start Simul Timer
+        self.VehicleName = self.func3Edit[10].text()
+        self.DroneMode = False
+        if self.VehicleName.lower().find("drone") != -1:
+            self.DroneMode = True
         self.Simultimer = QTimer(self)
         self.Simultimer.start(self.timeSlice)
         self.Simultimer.timeout.connect(timerFunc)
@@ -813,14 +862,63 @@ class Window(QWidget):
 
     def motion_goFoward(self):
         distance = float(self.func3Edit[6].text()) # +go Foward Distance
+
+        #+drone mode param
+        self.current_moving_distance = distance
+        self.rotation_stat = False
+        self.go_leftright = False
+        self.go_updown = False
+        #-drone mode param
+
         if 0 < distance:
             self.motionInit(1, 1, distance)
         else:
             self.motionInit(-1, -1, -distance)
         self.startSimulTimer(self.simulLocoTimer_slot)
+
+    def motion_goLeftRight(self):
+        distance = float(self.func3Edit[6].text()) # +go Foward Distance
+
+        #+drone mode param
+        self.current_moving_distance = distance
+        self.rotation_stat = False
+        self.go_leftright = True
+        self.go_updown = False
+        #-drone mode param
+
+        if 0 < distance:
+            self.motionInit(1, 1, distance)
+        else:
+            self.motionInit(-1, -1, -distance)
+        self.startSimulTimer(self.simulLocoTimer_slot)
+
+    def motion_goUpdown(self):
+        distance = float(self.func3Edit[6].text()) # +go Foward Distance
+
+        #+drone mode param
+        self.current_moving_distance = distance
+        self.rotation_stat = False
+        self.go_leftright = False
+        self.go_updown = True
+        #-drone mode param
+
+        if 0 < distance:
+            self.motionInit(1, 1, distance)
+        else:
+            self.motionInit(-1, -1, -distance)
+        self.startSimulTimer(self.simulLocoTimer_slot)
+
     def motion_Rotate(self):
         angle = float(self.func3Edit[7].text())
         distance = angle / 180. * self.wheelCircum #Unit:M
+
+        # +drone mode param
+        self.current_moving_distance = distance
+        self.rotation_stat = True
+        self.go_leftright = False
+        self.go_updown = False
+        # -drone mode param
+
         print("distance:", distance)
         if 0 < angle:
             self.motionInit(1, -1, distance)
@@ -841,7 +939,7 @@ class Window(QWidget):
             self.motionInit(-1, 1, -distance, 20)
         self.startSimulTimer(self.simulCamTiltTimer_slot)
 
-    def setCamView(self, Yaw, Pitch):
+    def setCamView(self, Yaw, Pitch, Roll=0, Update=True):
         # +Initiaizize Pos/Att
         setModelPosRot(0, 0, 0, 0, 0, 0, 0)
         setModelPosRot(1, 0, 0, 0, 0, 0, 0)
@@ -857,16 +955,17 @@ class Window(QWidget):
 
         setModelPosRot(0, 0,0, 0, Pitch, 0, 0)
         setModelPosRot(1, -(mdlFrame[3][0] + camOffsetX), -mdlFrame[3][1]+camOffsetY, -(mdlFrame[3][2] + camOffsetZ), 0, -Yaw, 0)
-
-        self.lastPitch = Pitch #for locomotion Timer's Initial Value
-        self.lastYaw = Yaw #for locomotion Timer's Initial Value
+        if Update:
+            self.lastPitch = Pitch #for locomotion Timer's Initial Value
+            self.lastYaw = Yaw #for locomotion Timer's Initial Value
     def simulLocoTimer_slot(self):
         #Initialize Movement
         if self.simulCnt == 0:
-            roverBaseID = 1
+            roverBaseID = find_objbyname(self.VehicleName)[0]
             self.posModelIO, self.rotModelIO, self.basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3) #get Src Position / Rotation
             self.zDiff = 0
             self.xDiff = 0
+            self.yDiff = 0
 
             #+video
             self.vidOut = None
@@ -892,7 +991,6 @@ class Window(QWidget):
 
         #+Calculation Yaw
         tmpDiff = (self.leftPos[self.simulCnt] - self.rightPos[self.simulCnt]) / 2
-
         rotateLoop = 2 * self.wheelCircum * 1000
         tmpSign = np.sign(tmpDiff)
         tmpDiff -= int(tmpDiff / rotateLoop) * rotateLoop * tmpSign
@@ -900,12 +998,23 @@ class Window(QWidget):
         # -Calculation Yaw
 
         tmpPosDiff = (self.leftSpd[self.simulCnt] + self.rightSpd[self.simulCnt]) / 2
-        self.xDiff += tmpPosDiff * self.timeSlice * math.sin(Yaw * math.pi / 180.)
-        self.zDiff += tmpPosDiff * self.timeSlice * math.cos(Yaw * math.pi / 180.)
-        #print(Yaw, tmpPosDiff)
+
+        if self.go_leftright:  # drone mode rotation doesn't change yaw
+            Yaw = self.basePosAtt[4]
+            self.xDiff += tmpPosDiff * self.timeSlice * math.cos(Yaw * math.pi / 180.)
+            self.zDiff += tmpPosDiff * self.timeSlice * math.sin(Yaw * math.pi / 180.)
+            self.yDiff = 0
+        elif self.go_updown:
+            self.yDiff += tmpPosDiff * self.timeSlice
+            self.xDiff = 0
+            self.zDiff = 0
+        else: #moving foward/backward
+            self.xDiff += tmpPosDiff * self.timeSlice * math.sin(Yaw * math.pi / 180.)
+            self.zDiff += tmpPosDiff * self.timeSlice * math.cos(Yaw * math.pi / 180.)
+            self.yDiff = 0
         #-locomotion Modeling
 
-        #+moving obstacle
+        #+moving obstacle : 움직이는 장애물 Script에서 NAME OBS01
         if self.movingObsParam is not None:
             objID = 7
             obspos = list(GetObjPos(objID))
@@ -917,17 +1026,32 @@ class Window(QWidget):
                 self.movingObsParam = None
         #-moving obstacle
 
+        #+Drone mode Locomotion
+        locomotion_pitch = 0
+        locomotion_roll = 0
+        if self.DroneMode:
+            if 0 < self.current_moving_distance:
+                locomotion_pitch = -8 * self.smooth_torque[self.simulCnt] * 1000#-15 * np.abs(self.rightSpd[self.simulCnt]) / np.max(np.abs(self.rightSpd))
+            else:
+                locomotion_pitch = +8 * self.smooth_torque[self.simulCnt] * 1000#+15 * np.abs(self.rightSpd[self.simulCnt]) / np.max(np.abs(self.rightSpd))
+            if self.rotation_stat or self.go_updown:
+                locomotion_pitch = 0
+            if self.go_leftright:
+                locomotion_roll = -locomotion_pitch
+                locomotion_pitch = 0
+        # -Drone mode Locomotion
+
         # +Refresh
         if self.simulCnt % self.refreshRate == 0:
             setModelPosRot(self.posModelIO,
-                           self.basePosAtt[0] + self.xDiff, self.basePosAtt[1], self.basePosAtt[2] + self.zDiff,
+                           self.basePosAtt[0] + self.xDiff, self.basePosAtt[1] + self.yDiff, self.basePosAtt[2] + self.zDiff,
                            0,0,0)
             setModelPosRot(self.rotModelIO,
                            0,0,0,
-                           self.basePosAtt[3], Yaw, self.basePosAtt[5])
+                           self.basePosAtt[3] + locomotion_pitch, Yaw, self.basePosAtt[5] + locomotion_roll)
 
             if self.vehicleCamMode:
-                self.setCamView(Yaw, self.lastPitch)
+                self.setCamView(Yaw, self.lastPitch - locomotion_pitch, Roll=self.basePosAtt[1] + self.yDiff, Update=(not self.DroneMode))
 
             # +video
             if self.vidOut is not None:
@@ -955,7 +1079,7 @@ class Window(QWidget):
                 #-depth file write
                 #+ground truth
                 with open(self.datasetPath+self.datasetMeta["groundtruth"], 'a') as f:
-                    roverBaseID = 1
+                    roverBaseID = find_objbyname(self.VehicleName)[0]
                     _, _, posAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
                     posAtt = np.array(posAtt)
                     posAtt -= np.array(self.basePosAtt)
@@ -1047,10 +1171,10 @@ class Window(QWidget):
         self.vehicleCamMode = False
 
     def view_onCam(self):
+        self.VehicleName = self.func3Edit[10].text()
         modelLen, modelList = getModelList(1024)
         for mdlIdx, modelName in enumerate(modelList):
-            if "Rover1_CAMERA" == modelName:
-
+            if self.VehicleName+"_CAMERA" == modelName:
                 setModelPosRot(0, 0, 0, 0, 0, 0, 0)
                 setModelPosRot(1, 0, 0, 0, 0, 0, 0)
 
@@ -1090,7 +1214,7 @@ class Window(QWidget):
             self.floorImgList.append(floorMask[0])
             self.floorCtrList.append(ctrPos)
 
-            roverBaseID = 1
+            roverBaseID = find_objbyname(self.VehicleName)[0]
             if self.datasetIndex is None:
                 self.datasetIndex = 0
                 _, _, self.offsetDSPosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
@@ -1141,7 +1265,7 @@ class Window(QWidget):
         tgtY = int(self.func4Edit[5].text())
 
         #+get Current Positiion
-        roverBaseID = 1
+        roverBaseID = find_objbyname(self.VehicleName)[0]
         if self.initBasePosAtt is None:
             _, _, self.initBasePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
         _, _, basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
@@ -1246,7 +1370,7 @@ class Window(QWidget):
             return
 
         #+ r
-        roverBaseID = 1
+        roverBaseID = find_objbyname(self.VehicleName)[0]
 
         if self.initBasePosAtt is None :
             _, _, self.initBasePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
@@ -1319,7 +1443,7 @@ class Window(QWidget):
         cv2.imshow("milestone Map", msMap)
         #-Display Result
     def locomotionImidiatly(self, distance=0, angle=0):
-        roverBaseID = 1
+        roverBaseID = find_objbyname(self.VehicleName)[0]
         self.posModelIO, self.rotModelIO, self.basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
 
         Yaw = self.basePosAtt[4] + angle
