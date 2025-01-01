@@ -140,6 +140,21 @@ def find_objbyname(search_name):
             obj_id += 1
     return objlist
 #-Util
+#+Collision
+def GetCollision(objid, skip_obj=[], verbose=False):
+    res_col_list = []
+    ret, col_list, col_num = CollisionCheck(objid)
+    col_cnt = 0
+    for col_idx in range(col_num):
+        if col_list[col_idx] != 0 and (not col_idx in skip_obj):
+            if verbose:
+                print(col_idx, ":", col_list[col_idx], end=" ")
+            res_col_list.append(col_idx)
+            col_cnt += 1
+    if col_cnt != 0 and verbose:
+        print()
+    return res_col_list
+#+Collision
 
 class Window(QWidget):
     def __init__(self, parent=None):
@@ -148,7 +163,7 @@ class Window(QWidget):
         mainGrid = QGridLayout()
 
         label = [["ScriptFile:", "EngineName:"]]
-        editDefault = [["ScriptRover.txt", "Thalamus QT Example"]]
+        editDefault = [["ScriptRoverDrone.txt", "Thalamus QT Example"]]
         buttonText = ["Engine Start"]
         buttonFunc = [self.InitEngine]
         subgrid, self.startEdit = self.createGroupBox("Global Coord Test", label, editDefault, buttonText, buttonFunc)
@@ -893,6 +908,7 @@ class Window(QWidget):
         self.startSimulTimer(self.simulLocoTimer_slot)
 
     def motion_goUpdown(self):
+
         distance = float(self.func3Edit[6].text()) # +go Foward Distance
 
         #+drone mode param
@@ -961,7 +977,10 @@ class Window(QWidget):
     def simulLocoTimer_slot(self):
         #Initialize Movement
         if self.simulCnt == 0:
-            roverBaseID = find_objbyname(self.VehicleName)[0]
+            #InitializeRenderFacet(-1, -1)
+
+            self.vehicle_obj = find_objbyname(self.VehicleName)
+            roverBaseID = self.vehicle_obj[0]
             self.posModelIO, self.rotModelIO, self.basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3) #get Src Position / Rotation
             self.zDiff = 0
             self.xDiff = 0
@@ -1031,15 +1050,21 @@ class Window(QWidget):
         locomotion_roll = 0
         if self.DroneMode:
             if 0 < self.current_moving_distance:
-                locomotion_pitch = -8 * self.smooth_torque[self.simulCnt] * 1000#-15 * np.abs(self.rightSpd[self.simulCnt]) / np.max(np.abs(self.rightSpd))
+                locomotion_pitch = -8 * self.smooth_torque[self.simulCnt] * 1000
             else:
-                locomotion_pitch = +8 * self.smooth_torque[self.simulCnt] * 1000#+15 * np.abs(self.rightSpd[self.simulCnt]) / np.max(np.abs(self.rightSpd))
+                locomotion_pitch = +8 * self.smooth_torque[self.simulCnt] * 1000
             if self.rotation_stat or self.go_updown:
                 locomotion_pitch = 0
             if self.go_leftright:
                 locomotion_roll = -locomotion_pitch
                 locomotion_pitch = 0
         # -Drone mode Locomotion
+
+        # +collision check
+        collision_list = GetCollision(self.vehicle_obj[0], self.vehicle_obj)
+        if 0 < len(collision_list):
+            print("collision:", collision_list)
+        # -collision check
 
         # +Refresh
         if self.simulCnt % self.refreshRate == 0:
