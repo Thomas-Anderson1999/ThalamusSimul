@@ -242,7 +242,7 @@ class Window(QWidget):
         # -Motion Constant
 
         #+Flag For Application
-        self.vehicleCamMode = False
+        self.vehicleCamMode = "NONE"
         #-Flag For Application
 
         #+Dataset setup
@@ -349,7 +349,7 @@ class Window(QWidget):
         self.globalCoordEdit[2].setText("0")
         self.globalCoordEdit[3].setText("90")
         self.globalPosAttSet()
-        self.vehicleCamMode = False
+        self.vehicleCamMode = "NONE"
 
     #-Global Coord Button Func
 
@@ -1066,6 +1066,11 @@ class Window(QWidget):
             print("collision:", collision_list)
         # -collision check
 
+        # + get floor sensor data : ONLY vehicleCamMode == True
+        floor_sensor = ReturnDistanceByPos2Dir(0, 20, 0, 0, 1, 0) #
+        print("floor_sensor:", floor_sensor, self.basePosAtt[0] + self.xDiff, self.basePosAtt[1] + self.yDiff, self.basePosAtt[2] + self.zDiff)
+        #-get floor sensor data
+
         # +Refresh
         if self.simulCnt % self.refreshRate == 0:
             setModelPosRot(self.posModelIO,
@@ -1075,7 +1080,7 @@ class Window(QWidget):
                            0,0,0,
                            self.basePosAtt[3] + locomotion_pitch, Yaw, self.basePosAtt[5] + locomotion_roll)
 
-            if self.vehicleCamMode:
+            if (self.vehicleCamMode != "NONE") and (self.vehicleCamMode == self.VehicleName):
                 self.setCamView(Yaw, self.lastPitch - locomotion_pitch, Roll=self.basePosAtt[1] + self.yDiff, Update=(not self.DroneMode))
 
             # +video
@@ -1147,7 +1152,7 @@ class Window(QWidget):
                            0, 0, 0,
                            tmpPosDiff, self.basePosAtt[4], self.basePosAtt[5])
 
-            if self.vehicleCamMode:
+            if self.vehicleCamMode != "NONE":
                 self.setCamView(self.lastYaw, tmpPosDiff)
 
             InitializeRenderFacet(-1, -1)
@@ -1177,7 +1182,7 @@ class Window(QWidget):
         self.globalCoordEdit[2].setText("2400.0")
         self.globalCoordEdit[3].setText("0")
         self.globalPosAttSet()
-        self.vehicleCamMode = False
+        self.vehicleCamMode = "NONE"
 
     def view_sec2(self):
         self.globalCoordEdit[0].setText("0")
@@ -1185,7 +1190,7 @@ class Window(QWidget):
         self.globalCoordEdit[2].setText("2400.0")
         self.globalCoordEdit[3].setText("0")
         self.globalPosAttSet()
-        self.vehicleCamMode = False
+        self.vehicleCamMode = "NONE"
 
     def view_sec3(self):
         self.globalCoordEdit[0].setText("-4000")
@@ -1193,7 +1198,7 @@ class Window(QWidget):
         self.globalCoordEdit[2].setText("2400.0")
         self.globalCoordEdit[3].setText("0")
         self.globalPosAttSet()
-        self.vehicleCamMode = False
+        self.vehicleCamMode = "NONE"
 
     def view_onCam(self):
         self.VehicleName = self.func3Edit[10].text()
@@ -1211,7 +1216,7 @@ class Window(QWidget):
                 print(tempYaw, tempPitch)
                 self.setCamView(tempYaw, tempPitch)
                 InitializeRenderFacet(-1, -1)
-                self.vehicleCamMode = True
+                self.vehicleCamMode = self.VehicleName
                 break
         #self.globalPosAttSet()
 
@@ -1482,7 +1487,7 @@ class Window(QWidget):
                        0, 0, 0,
                        self.basePosAtt[3], Yaw, self.basePosAtt[5])
 
-        if self.vehicleCamMode:
+        if self.vehicleCamMode != "NONE":
             self.setCamView(Yaw, self.lastPitch)
 
         InitializeRenderFacet(-1, -1)
@@ -1499,7 +1504,7 @@ class Window(QWidget):
 
         setModelPosRot(self.rotModelIO, 0, 0, 0, angle, self.basePosAtt[4], self.basePosAtt[5])
 
-        if self.vehicleCamMode:
+        if self.vehicleCamMode != "NONE":
             self.setCamView(self.lastYaw, angle)
 
         InitializeRenderFacet(-1, -1)
