@@ -207,7 +207,7 @@ class Window(QWidget):
 
 
         label = [["axis", "acc", "cruiseSpd", "dcc", "distance", "Simul Len"], ["Straight", "Rotate", "Cam Tilt", "File Save", "Vehicle"]]
-        editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0", "None", "Drone1"]]
+        editDefault = [["0", "1.0", "1.0", "1.0", "3.0", "5.0"], ["1.0",  "45.0", "0", "None", "Rover1"]]
         buttonText = ["getProfile", "go Straigt", "go LR", "go Updn", "Rotate",
                       "cam Tilt", "View Sec1", "View Sec2", "View Sec3", "View Cam",
                       "Clicked WayPnt", "go Imd", "rot Imd", "tilt Imd"]
@@ -986,6 +986,19 @@ class Window(QWidget):
             self.xDiff = 0
             self.yDiff = 0
 
+            #+ drone connecting process
+            self.drone_move_together = False
+            if -1 != self.VehicleName.lower().find("rover"):
+                self._vehicle_obj = find_objbyname("Drone1")
+                droneBaseID = self._vehicle_obj[0]
+                self._posModelIO, self._rotModelIO, self._basePosAtt = self.getSrcPosAtt(droneBaseID, -4,-3)  # get Src Position / Rotation
+                collision_list = GetCollision(self._vehicle_obj[0], self._vehicle_obj)
+                for objid in self.vehicle_obj:
+                   if objid in collision_list:
+                       self.drone_move_together = True
+            #- drone connecting process
+
+
             #+video
             self.vidOut = None
             if self.func3Edit[9].text() != "None":
@@ -1080,6 +1093,17 @@ class Window(QWidget):
                            0,0,0,
                            self.basePosAtt[3] + locomotion_pitch, Yaw, self.basePosAtt[5] + locomotion_roll)
 
+            # + drone connecting process
+            if self.drone_move_together:
+                setModelPosRot(self._posModelIO,
+                               self._basePosAtt[0] + self.xDiff, self._basePosAtt[1] + self.yDiff,
+                               self._basePosAtt[2] + self.zDiff,
+                               0, 0, 0)
+                setModelPosRot(self._rotModelIO,
+                               0, 0, 0,
+                               self._basePosAtt[3] + locomotion_pitch, Yaw, self._basePosAtt[5] + locomotion_roll)
+            # - drone connecting process
+
             if (self.vehicleCamMode != "NONE") and (self.vehicleCamMode == self.VehicleName):
                 self.setCamView(Yaw, self.lastPitch - locomotion_pitch, Roll=self.basePosAtt[1] + self.yDiff, Update=(not self.DroneMode))
 
@@ -1116,6 +1140,7 @@ class Window(QWidget):
                     f.write(f"{posAtt[0]}\t{posAtt[1]}\t{posAtt[2]}\t{posAtt[3]}\t{posAtt[4]}\t{posAtt[5]}\n")
                 # -ground truth
             # -video
+
             else:
                 InitializeRenderFacet(-1, -1)
         # -Refresh
@@ -1473,6 +1498,7 @@ class Window(QWidget):
         cv2.imshow("milestone Map", msMap)
         #-Display Result
     def locomotionImidiatly(self, distance=0, angle=0):
+        self.VehicleName = self.func3Edit[10].text()
         roverBaseID = find_objbyname(self.VehicleName)[0]
         self.posModelIO, self.rotModelIO, self.basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3)  # get Src Position / Rotation
 
@@ -1489,6 +1515,31 @@ class Window(QWidget):
 
         if self.vehicleCamMode != "NONE":
             self.setCamView(Yaw, self.lastPitch)
+
+        # + drone connecting process
+        self.vehicle_obj = find_objbyname(self.VehicleName)
+        self.drone_move_together = False
+        if -1 != self.VehicleName.lower().find("rover"):
+            self._vehicle_obj = find_objbyname("Drone1")
+            droneBaseID = self._vehicle_obj[0]
+            self._posModelIO, self._rotModelIO, self._basePosAtt = self.getSrcPosAtt(droneBaseID, -4,
+                                                                                     -3)  # get Src Position / Rotation
+            collision_list = GetCollision(self._vehicle_obj[0], self._vehicle_obj)
+            for objid in self.vehicle_obj:
+                if objid in collision_list:
+                    self.drone_move_together = True
+        # - drone connecting process
+        # + drone connecting process
+        if self.drone_move_together:
+            setModelPosRot(self._posModelIO,
+                           self._basePosAtt[0] + self.xDiff, self._basePosAtt[1],
+                           self._basePosAtt[2] + self.zDiff,
+                           0, 0, 0)
+            setModelPosRot(self._rotModelIO,
+                           0, 0, 0,
+                           self._basePosAtt[3], Yaw,
+                           self._basePosAtt[5])
+        # - drone connecting process
 
         InitializeRenderFacet(-1, -1)
     def goImidiatly(self):
