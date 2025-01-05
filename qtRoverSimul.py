@@ -1094,6 +1094,9 @@ class Window(QWidget):
         if self.simulCnt == 0:
             #InitializeRenderFacet(-1, -1)
 
+            distance = float(self.func3Edit[6].text())  # +go Foward Distance
+            self.distance_sign = np.sign(distance)
+
             self.vehicle_obj = find_objbyname(self.VehicleName)
             roverBaseID = self.vehicle_obj[0]
             self.posModelIO, self.rotModelIO, self.basePosAtt = self.getSrcPosAtt(roverBaseID, -4, -3) #get Src Position / Rotation
@@ -1178,9 +1181,9 @@ class Window(QWidget):
         locomotion_roll = 0
         if self.DroneMode:
             if 0 < self.current_moving_distance:
-                locomotion_pitch = -8 * self.smooth_torque[self.simulCnt] * 1000
+                locomotion_pitch = -8 * self.smooth_torque[self.simulCnt] * 1000 * self.distance_sign
             else:
-                locomotion_pitch = +8 * self.smooth_torque[self.simulCnt] * 1000
+                locomotion_pitch = +8 * self.smooth_torque[self.simulCnt] * 1000 * self.distance_sign
             if self.rotation_stat or self.go_updown:
                 locomotion_pitch = 0
             if self.go_leftright:
