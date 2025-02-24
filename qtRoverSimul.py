@@ -6,6 +6,7 @@ import numpy as np
 import time
 import math
 import json
+import socket as sock
 
 from ThalamusEngine.Interface import *
 from matplotlib import pyplot as plt
@@ -156,6 +157,69 @@ def GetCollision(objid, skip_obj=[], verbose=False):
     return res_col_list
 #+Collision
 
+#+shared memory
+from multiprocessing import shared_memory
+def get_shm(_name, size_x, size_y, size_z, type=np.uint8):
+    sample_array = np.zeros((size_x, size_y, size_z), dtype=type)
+    try:
+        stream_shm = shared_memory.SharedMemory(name =_name,create=True, size=sample_array.nbytes)
+    except FileExistsError:
+        stream_shm = shared_memory.SharedMemory(name=_name, create=False, size=sample_array.nbytes)
+    return stream_shm
+
+def EncodeJson2SHM(_buffer, data):
+    b = np.ndarray(1024, dtype=np.byte, buffer=_buffer)
+    json_bytes = str.encode(json.dumps(data))
+
+    for idx in range(len(json_bytes)):
+        b[idx] = json_bytes[idx]
+    b[len(json_bytes)] = 0
+
+def DecodeJsonFromSHM(_buffer):
+    temp_bytes = np.ndarray(1024, dtype=np.byte, buffer=_buffer).tobytes()  # .decode(encoding="utf-8")
+    temp_str = ""
+    for idx in range(1024):
+        if temp_bytes[idx] == 0:
+            break
+        else:
+            temp_str += str(chr(int(temp_bytes[idx])))
+
+    if 0 < len(temp_str):
+        parsed_cmd = json.loads(temp_str)
+
+        temp_bytes = np.ndarray(1024, dtype=np.byte, buffer=_buffer)
+        for i in range(1024):
+            temp_bytes[i] = 0
+        return parsed_cmd
+    return None
+
+
+import threading
+def RemoteSimulThread():
+    remote_cnt = 0
+    remote_rgb_img = get_shm("Thalamus_Simul_RGB", 1280, 720, 3)
+
+    def getExtEngineImage(Color_width=1280, Color_Height=720, update=True):
+        Color_image = np.zeros((Color_Height, Color_width, 3), np.uint8)
+        if update:
+            InitializeRenderFacet(-1, -1)  # refresh
+        GetColorImage(Color_image.ctypes, Color_width, Color_Height)
+        return Color_image
+
+    while True:
+        if 10 < remote_cnt:
+            Remote_Img = getExtEngineImage(update=True)
+            #cv2.imshow("Remote_Img", Remote_Img)
+            #print("remote Thread")
+            shared_a = np.ndarray(Remote_Img.shape, dtype=Remote_Img.dtype, buffer=remote_rgb_img.buf)
+            shared_a[:] = Remote_Img
+
+        time.sleep(0.050) #20hz
+        remote_cnt += 1
+#-shared memory
+
+
+
 class Window(QWidget):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
@@ -272,6 +336,15 @@ class Window(QWidget):
         self.datasetMeta["DepthHeight"] = 0
         # dataset meta file
 
+        #+udp server to remote contro;
+        t1 = threading.Thread(target=self.udp_server_thread)
+        t1.start()
+        self.simulCnt = 0
+        self.keepgoing_cnt = 0
+        self.simulCnt = 0
+        self.stoping_cnt = 0
+        #-udp server to remote contro;
+
     def createGroupBox(self, gbxName, labeltext, editDefault, buttonText, buttonFunc):
         groupBox = QGroupBox(gbxName)
         grid = QGridLayout()
@@ -313,8 +386,148 @@ class Window(QWidget):
                 QMessageBox.about(self, "Initialize Error:" + str(errCode), "Error On " + errMsg)
 
             StartExt3DEngine(AsmFileName, SimWindowText)
+
+            self.Remote_timer = QTimer(self)
+            self.Remote_timer.start(100)# 100ms
+            self.Remote_timer.timeout.connect(self.RemoteSimulTimer)
+            self.reverse_cmd = []
+            """
+            self.remote_cnt = 0
+            self.remote_rgb_img = get_shm("Thalamus_Simul_RGB",1280,720, 3)
+            """
+
+            #+remote simulation
+            self.Comm_Sim2Con = get_shm("Thalamus_Comm_Sim2Con", 1024, 1, 1)
+            self.Comm_Con2Sim = get_shm("Thalamus_Comm_Con2Sim", 1024, 1, 1)
+            self.CameraPosAtt = [0,0,0,0]
+            t = threading.Thread(target=RemoteSimulThread)
+            t.start()
+            #-remote simulation
         else:
             OnMsgText("Error on Loading Library")
+
+    #+ remote control simulation, 10Hz
+    def RemoteSimulTimer(self):
+
+        parsed_cmd = DecodeJsonFromSHM(self.Comm_Con2Sim.buf)
+
+        if parsed_cmd is not None:
+
+            self.func3Edit[10].setText(parsed_cmd["vehicle"])
+
+            if parsed_cmd["cmd"] == "fwd":
+                self.func3Edit[6].setText(str(parsed_cmd["param"]))
+                self.motion_goFoward()
+
+            if parsed_cmd["cmd"] == "move_LR":
+                self.func3Edit[6].setText(str(parsed_cmd["param"]))
+                self.motion_goLeftRight()
+
+            if parsed_cmd["cmd"] == "updown":
+                self.func3Edit[6].setText(str(parsed_cmd["param"]))
+                self.motion_goUpdown()
+
+            if parsed_cmd["cmd"] == "rotate":
+                self.func3Edit[7].setText(str(parsed_cmd["param"]))
+                self.motion_Rotate()
+
+
+        data = {"battery": 100, "controll_height": 0, "sensing_height": int(self.CameraPosAtt[0] / 10),
+                "attitude": {"roll":int(self.CameraPosAtt[1]), "pitch":int(self.CameraPosAtt[2]), "yaw":int(self.CameraPosAtt[3])}}
+        EncodeJson2SHM(self.Comm_Sim2Con.buf, data)
+
+
+        for cmd in self.reverse_cmd:
+            cmd()
+        self.reverse_cmd = []
+    #udp server socket
+
+    def udp_server_thread(self):
+        server_ip = "127.0.0.1"
+        server_port = 7726
+        server_addr_port = (server_ip, server_port)
+        buffersize = 1024
+
+        udp_server_socket = sock.socket(family=sock.AF_INET, type=sock.SOCK_DGRAM)
+        udp_server_socket.bind(server_addr_port)
+        udp_server_socket.setblocking(False)
+        # udp_server_socket.settimeout(1.0)
+
+        print("UDP server is up and listening")
+
+        # Listen Datagram incoming
+        while (True):
+            try:
+                byte_addr_pair = udp_server_socket.recvfrom(buffersize)
+            except BlockingIOError:
+                continue
+
+            """
+            msg = byte_addr_pair[0]
+            addr = byte_addr_pair[1]
+
+            client_msg = "msg from client : {}".format(len(msg))
+            client_ip = "client IP Addr : {}".format(addr)
+
+            print(client_msg)
+            print(client_ip)
+            print(msg)
+            """
+            msg = byte_addr_pair[0].decode('utf-8')
+            print(msg)
+
+            parse = msg.split(' ')
+            #SV -1 500                     XX
+            if parse[0] == "SV":
+                try:
+                    self.Simultimer.stop()
+                except:
+                    pass
+                axis = int(parse[1])
+                param1 = int(parse[2])
+                degree = 45 * (param1 - 500) / 500
+                print(f"Servo {axis} {degree}")
+                self.func3Edit[8].setText(str(degree))
+                self.tiltImidiatly()
+            #MV 1 1600 -4646               XX
+            if parse[0] == "MV":
+                try:
+                    self.Simultimer.stop()
+                except:
+                    pass
+                axis = int(parse[1])
+                param1 = int(parse[2])
+                param2 = int(parse[3])
+                distance = -param2 / 4646
+                print(f"Servo {axis} {distance}")
+                self.func3Edit[6].setText(str(distance))
+                self.reverse_cmd.append(self.motion_goFoward)
+            #RT 1 800 4646                 XX
+            if parse[0] == "RT":
+                try:
+                    self.Simultimer.stop()
+                except:
+                    pass
+                axis = int(parse[1])
+                param1 = int(parse[2])
+                param2 = int(parse[3])
+                angle = param2 / 4646 * 90
+                print(f"Servo {axis} {angle}")
+                self.func3Edit[7].setText(str(angle))
+                self.reverse_cmd.append(self.motion_Rotate)
+            if parse[0] == "KG":
+                if 0 < self.keepgoing_cnt < len(self.leftPos) and 0 < self.simulCnt < len(self.leftPos):
+                    self.left_kg_offset += (self.leftPos[self.simulCnt] - self.leftPos[self.keepgoing_cnt])
+                    self.right_kg_offset += (self.rightPos[self.simulCnt] - self.rightPos[self.keepgoing_cnt])
+                    self.simulCnt = self.keepgoing_cnt
+                print("Keep Going", self.keepgoing_cnt, self.simulCnt)
+            if parse[0] == "ST":
+                if 0 <= self.stoping_cnt < len(self.leftPos) and 0 <= self.simulCnt < len(self.leftPos):
+                    self.left_kg_offset -= (self.leftPos[self.stoping_cnt] - self.leftPos[self.simulCnt])
+                    self.right_kg_offset -= (self.rightPos[self.stoping_cnt] - self.rightPos[self.simulCnt])
+                    self.simulCnt = self.stoping_cnt
+                print("Stoping", self.stoping_cnt, self.simulCnt)
+    # - remote control simulation
 
     #+Global Coord Button Func
     def getGlobal(self):
@@ -503,9 +716,10 @@ class Window(QWidget):
         GetShadeImage(Shade_Img.ctypes, Shade_Mask.ctypes, DestWidth, DestHeight, CPUCore, SrcPosX, SrcPosY, SrcWidth, SrcHeight, ObjID)
         cv2.imshow("Shade_Img", Shade_Img)
 
-    def getExtEngineImage(self, Color_width=1280, Color_Height=720):
+    def getExtEngineImage(self, Color_width=1280, Color_Height=720, update=True):
         Color_image = np.zeros((Color_Height, Color_width, 3), np.uint8)
-        InitializeRenderFacet(-1, -1)  # refresh
+        if update:
+            InitializeRenderFacet(-1, -1)  # refresh
         GetColorImage(Color_image.ctypes, Color_width, Color_Height)
         return Color_image
     def funcExtEngineViewMap(self):
@@ -860,6 +1074,7 @@ class Window(QWidget):
         self.simulCnt = 0
         self.refreshRate = 12
         # -start Simul Timer
+
     def getSrcPosAtt(self, baseID, posOffset, rotOffset):
         posModelIO = getModelIDByObjID(baseID) + posOffset
         ret, Buff = getModelPosRot(posModelIO)
@@ -975,9 +1190,30 @@ class Window(QWidget):
             self.lastPitch = Pitch #for locomotion Timer's Initial Value
             self.lastYaw = Yaw #for locomotion Timer's Initial Value
     def simulLocoTimer_slot(self):
+        if self.simulCnt == len(self.motionState): #state_standby
+            self.Simultimer.stop()
+            return
+
         #Initialize Movement
         if self.simulCnt == 0:
             #InitializeRenderFacet(-1, -1)
+            # + 모션 컨트롤 state 분석, keep going할때와 stop시작할 카운트를 저장해 둔다
+            for idx in range(len(self.motionState)):
+                if self.motionState[idx] != 0:
+                    self.keepgoing_cnt = idx
+                    break
+            for idx in range(len(self.motionState)):
+                if self.motionState[idx] == 2:
+                    self.stoping_cnt = idx
+                    break
+            self.left_st_offset = 0
+            self.right_st_offset = 0
+            self.left_kg_offset = 0
+            self.right_kg_offset = 0
+            # - 모션 컨트롤 state 분석, keep going할때와 stop시작할 카운트를 저장해 둔다
+
+            distance = float(self.func3Edit[6].text())  # +go Foward Distance
+            self.distance_sign = np.sign(distance)
 
             self.vehicle_obj = find_objbyname(self.VehicleName)
             roverBaseID = self.vehicle_obj[0]
@@ -1022,7 +1258,7 @@ class Window(QWidget):
         #+locomotion Modeling
 
         #+Calculation Yaw
-        tmpDiff = (self.leftPos[self.simulCnt] - self.rightPos[self.simulCnt]) / 2
+        tmpDiff = (self.leftPos[self.simulCnt] + self.left_kg_offset - (self.rightPos[self.simulCnt] + self.right_kg_offset)) / 2
         rotateLoop = 2 * self.wheelCircum * 1000
         tmpSign = np.sign(tmpDiff)
         tmpDiff -= int(tmpDiff / rotateLoop) * rotateLoop * tmpSign
@@ -1063,9 +1299,9 @@ class Window(QWidget):
         locomotion_roll = 0
         if self.DroneMode:
             if 0 < self.current_moving_distance:
-                locomotion_pitch = -8 * self.smooth_torque[self.simulCnt] * 1000
+                locomotion_pitch = -8 * self.smooth_torque[self.simulCnt] * 1000 * self.distance_sign
             else:
-                locomotion_pitch = +8 * self.smooth_torque[self.simulCnt] * 1000
+                locomotion_pitch = +8 * self.smooth_torque[self.simulCnt] * 1000 * self.distance_sign
             if self.rotation_stat or self.go_updown:
                 locomotion_pitch = 0
             if self.go_leftright:
@@ -1076,12 +1312,15 @@ class Window(QWidget):
         # +collision check
         collision_list = GetCollision(self.vehicle_obj[0], self.vehicle_obj)
         if 0 < len(collision_list):
-            print("collision:", collision_list)
+            print("collision:", collision_list, self.simulCnt)
+            if 300 < self.simulCnt:
+                self.Simultimer.stop()
         # -collision check
 
         # + get floor sensor data : ONLY vehicleCamMode == True
         floor_sensor = ReturnDistanceByPos2Dir(0, 20, 0, 0, 1, 0) #
-        print("floor_sensor:", floor_sensor, self.basePosAtt[0] + self.xDiff, self.basePosAtt[1] + self.yDiff, self.basePosAtt[2] + self.zDiff)
+        #print("floor_sensor:", floor_sensor, self.basePosAtt[0] + self.xDiff, self.basePosAtt[1] + self.yDiff, self.basePosAtt[2] + self.zDiff)
+        self.CameraPosAtt = [floor_sensor, self.basePosAtt[5], self.basePosAtt[3], self.basePosAtt[4]]
         #-get floor sensor data
 
         # +Refresh
@@ -1141,8 +1380,8 @@ class Window(QWidget):
                 # -ground truth
             # -video
 
-            else:
-                InitializeRenderFacet(-1, -1)
+            #else:
+            #    InitializeRenderFacet(-1, -1)
         # -Refresh
 
         self.simulCnt += 1
@@ -1180,7 +1419,7 @@ class Window(QWidget):
             if self.vehicleCamMode != "NONE":
                 self.setCamView(self.lastYaw, tmpPosDiff)
 
-            InitializeRenderFacet(-1, -1)
+            #InitializeRenderFacet(-1, -1)
 
             # +video
             if self.vidOut is not None:
@@ -1240,7 +1479,7 @@ class Window(QWidget):
                 tempPitch = -math.asin(mdlFrame[2][1]) * 180. / math.pi
                 print(tempYaw, tempPitch)
                 self.setCamView(tempYaw, tempPitch)
-                InitializeRenderFacet(-1, -1)
+                #InitializeRenderFacet(-1, -1)
                 self.vehicleCamMode = self.VehicleName
                 break
         #self.globalPosAttSet()
