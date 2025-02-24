@@ -6,6 +6,7 @@ import numpy as np
 import time
 import math
 import json
+import socket as sock
 
 from ThalamusEngine.Interface import *
 from matplotlib import pyplot as plt
@@ -335,6 +336,15 @@ class Window(QWidget):
         self.datasetMeta["DepthHeight"] = 0
         # dataset meta file
 
+        #+udp server to remote contro;
+        t1 = threading.Thread(target=self.udp_server_thread)
+        t1.start()
+        self.simulCnt = 0
+        self.keepgoing_cnt = 0
+        self.simulCnt = 0
+        self.stoping_cnt = 0
+        #-udp server to remote contro;
+
     def createGroupBox(self, gbxName, labeltext, editDefault, buttonText, buttonFunc):
         groupBox = QGroupBox(gbxName)
         grid = QGridLayout()
@@ -380,6 +390,7 @@ class Window(QWidget):
             self.Remote_timer = QTimer(self)
             self.Remote_timer.start(100)# 100ms
             self.Remote_timer.timeout.connect(self.RemoteSimulTimer)
+            self.reverse_cmd = []
             """
             self.remote_cnt = 0
             self.remote_rgb_img = get_shm("Thalamus_Simul_RGB",1280,720, 3)
@@ -426,7 +437,96 @@ class Window(QWidget):
         EncodeJson2SHM(self.Comm_Sim2Con.buf, data)
 
 
+        for cmd in self.reverse_cmd:
+            cmd()
+        self.reverse_cmd = []
+    #udp server socket
 
+    def udp_server_thread(self):
+        server_ip = "127.0.0.1"
+        server_port = 7726
+        server_addr_port = (server_ip, server_port)
+        buffersize = 1024
+
+        udp_server_socket = sock.socket(family=sock.AF_INET, type=sock.SOCK_DGRAM)
+        udp_server_socket.bind(server_addr_port)
+        udp_server_socket.setblocking(False)
+        # udp_server_socket.settimeout(1.0)
+
+        print("UDP server is up and listening")
+
+        # Listen Datagram incoming
+        while (True):
+            try:
+                byte_addr_pair = udp_server_socket.recvfrom(buffersize)
+            except BlockingIOError:
+                continue
+
+            """
+            msg = byte_addr_pair[0]
+            addr = byte_addr_pair[1]
+
+            client_msg = "msg from client : {}".format(len(msg))
+            client_ip = "client IP Addr : {}".format(addr)
+
+            print(client_msg)
+            print(client_ip)
+            print(msg)
+            """
+            msg = byte_addr_pair[0].decode('utf-8')
+            print(msg)
+
+            parse = msg.split(' ')
+            #SV -1 500                     XX
+            if parse[0] == "SV":
+                try:
+                    self.Simultimer.stop()
+                except:
+                    pass
+                axis = int(parse[1])
+                param1 = int(parse[2])
+                degree = 45 * (param1 - 500) / 500
+                print(f"Servo {axis} {degree}")
+                self.func3Edit[8].setText(str(degree))
+                self.tiltImidiatly()
+            #MV 1 1600 -4646               XX
+            if parse[0] == "MV":
+                try:
+                    self.Simultimer.stop()
+                except:
+                    pass
+                axis = int(parse[1])
+                param1 = int(parse[2])
+                param2 = int(parse[3])
+                distance = -param2 / 4646
+                print(f"Servo {axis} {distance}")
+                self.func3Edit[6].setText(str(distance))
+                self.reverse_cmd.append(self.motion_goFoward)
+            #RT 1 800 4646                 XX
+            if parse[0] == "RT":
+                try:
+                    self.Simultimer.stop()
+                except:
+                    pass
+                axis = int(parse[1])
+                param1 = int(parse[2])
+                param2 = int(parse[3])
+                angle = param2 / 4646 * 90
+                print(f"Servo {axis} {angle}")
+                self.func3Edit[7].setText(str(angle))
+                self.reverse_cmd.append(self.motion_Rotate)
+            if parse[0] == "KG":
+                if 0 < self.keepgoing_cnt < len(self.leftPos) and 0 < self.simulCnt < len(self.leftPos):
+                    self.left_kg_offset += (self.leftPos[self.simulCnt] - self.leftPos[self.keepgoing_cnt])
+                    self.right_kg_offset += (self.rightPos[self.simulCnt] - self.rightPos[self.keepgoing_cnt])
+                    self.simulCnt = self.keepgoing_cnt
+                print("Keep Going", self.keepgoing_cnt, self.simulCnt)
+            if parse[0] == "ST":
+                if 0 <= self.stoping_cnt < len(self.leftPos) and 0 <= self.simulCnt < len(self.leftPos):
+                    self.left_kg_offset -= (self.leftPos[self.stoping_cnt] - self.leftPos[self.simulCnt])
+                    self.right_kg_offset -= (self.rightPos[self.stoping_cnt] - self.rightPos[self.simulCnt])
+                    self.simulCnt = self.stoping_cnt
+                print("Stoping", self.stoping_cnt, self.simulCnt)
     # - remote control simulation
 
     #+Global Coord Button Func
@@ -1090,9 +1190,27 @@ class Window(QWidget):
             self.lastPitch = Pitch #for locomotion Timer's Initial Value
             self.lastYaw = Yaw #for locomotion Timer's Initial Value
     def simulLocoTimer_slot(self):
+        if self.simulCnt == len(self.motionState): #state_standby
+            self.Simultimer.stop()
+            return
+
         #Initialize Movement
         if self.simulCnt == 0:
             #InitializeRenderFacet(-1, -1)
+            # + 모션 컨트롤 state 분석, keep going할때와 stop시작할 카운트를 저장해 둔다
+            for idx in range(len(self.motionState)):
+                if self.motionState[idx] != 0:
+                    self.keepgoing_cnt = idx
+                    break
+            for idx in range(len(self.motionState)):
+                if self.motionState[idx] == 2:
+                    self.stoping_cnt = idx
+                    break
+            self.left_st_offset = 0
+            self.right_st_offset = 0
+            self.left_kg_offset = 0
+            self.right_kg_offset = 0
+            # - 모션 컨트롤 state 분석, keep going할때와 stop시작할 카운트를 저장해 둔다
 
             distance = float(self.func3Edit[6].text())  # +go Foward Distance
             self.distance_sign = np.sign(distance)
@@ -1140,7 +1258,7 @@ class Window(QWidget):
         #+locomotion Modeling
 
         #+Calculation Yaw
-        tmpDiff = (self.leftPos[self.simulCnt] - self.rightPos[self.simulCnt]) / 2
+        tmpDiff = (self.leftPos[self.simulCnt] + self.left_kg_offset - (self.rightPos[self.simulCnt] + self.right_kg_offset)) / 2
         rotateLoop = 2 * self.wheelCircum * 1000
         tmpSign = np.sign(tmpDiff)
         tmpDiff -= int(tmpDiff / rotateLoop) * rotateLoop * tmpSign
