@@ -227,7 +227,7 @@ class Window(QWidget):
         mainGrid = QGridLayout()
 
         label = [["ScriptFile:", "EngineName:"]]
-        editDefault = [["ScriptRoverDrone.txt", "Thalamus QT Example"]]
+        editDefault = [["ScriptRover_LectureRoom.txt", "Thalamus QT Example"]]
         buttonText = ["Engine Start"]
         buttonFunc = [self.InitEngine]
         subgrid, self.startEdit = self.createGroupBox("Global Coord Test", label, editDefault, buttonText, buttonFunc)
@@ -1224,7 +1224,7 @@ class Window(QWidget):
 
             #+ drone connecting process
             self.drone_move_together = False
-            if -1 != self.VehicleName.lower().find("rover"):
+            if -1 != self.VehicleName.lower().find("Drone"):
                 self._vehicle_obj = find_objbyname("Drone1")
                 droneBaseID = self._vehicle_obj[0]
                 self._posModelIO, self._rotModelIO, self._basePosAtt = self.getSrcPosAtt(droneBaseID, -4,-3)  # get Src Position / Rotation
